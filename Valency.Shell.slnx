@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Valency.Shell.Tests/Valency.Shell.Tests.csproj" />
+  <Project Path="Valency.Shell/Valency.Shell.csproj" />
+</Solution>

@@ -16,7 +16,7 @@ public static class PathResolver
         var hasExtension = !string.IsNullOrEmpty(Path.GetExtension(command));
         var candidates = hasExtension
             ? new[] { command }
-            : pathExt.Select(ext => command + ext).Prepend(command);
+            : pathExt.Select(ext => command + ext);
 
         var searchDirs = new[] { Environment.CurrentDirectory }
             .Concat((Environment.GetEnvironmentVariable("PATH") ?? "")

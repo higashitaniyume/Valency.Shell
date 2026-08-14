@@ -4,13 +4,23 @@ namespace Valency.Shell;
 
 public static class ProcessRunner
 {
-    public static int Run(string command, IReadOnlyList<string> arguments)
+    private static ProcessStartInfo CreateStartInfo(string resolved, IReadOnlyList<string> arguments)
     {
-        var resolved = PathResolver.Resolve(command);
-        if (resolved is null)
+        var extension = Path.GetExtension(resolved);
+        if (extension.Equals(".bat", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine($"'{command}' 不是可识别的命令或可执行文件");
-            return 1;
+            var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+            var inner = Quote(resolved);
+            foreach (var arg in arguments)
+                inner += " " + Quote(arg);
+
+            return new ProcessStartInfo
+            {
+                FileName = cmd,
+                Arguments = "/c \"" + inner + "\"",
+                UseShellExecute = false,
+            };
         }
 
         var startInfo = new ProcessStartInfo
@@ -20,6 +30,26 @@ public static class ProcessRunner
         };
         foreach (var arg in arguments)
             startInfo.ArgumentList.Add(arg);
+        return startInfo;
+    }
+
+    private static string Quote(string value)
+    {
+        return value.Contains(' ') || value.Contains('"')
+            ? "\"" + value.Replace("\"", "\\\"") + "\""
+            : value;
+    }
+
+    public static int Run(string command, IReadOnlyList<string> arguments)
+    {
+        var resolved = PathResolver.Resolve(command);
+        if (resolved is null)
+        {
+            Console.Error.WriteLine($"'{command}' 不是可识别的命令或可执行文件");
+            return 1;
+        }
+
+        var startInfo = CreateStartInfo(resolved, arguments);
 
         try
         {

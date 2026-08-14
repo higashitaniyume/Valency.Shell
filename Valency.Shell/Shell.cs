@@ -2,6 +2,7 @@ namespace Valency.Shell;
 
 public sealed class Shell
 {
+    private readonly LineEditor _editor = new();
     private string? _previousDirectory;
     public int LastExitCode { get; private set; }
 
@@ -9,12 +10,16 @@ public sealed class Shell
     {
         while (true)
         {
-            Console.Out.Write($"valency {Environment.CurrentDirectory}> ");
-            var line = Console.In.ReadLine();
-            if (line is null)
+            var result = _editor.ReadLine($"valency {Environment.CurrentDirectory}> ");
+            if (result.Kind == LineResultKind.Exit)
                 return LastExitCode;
+            if (result.Kind == LineResultKind.Cancelled)
+            {
+                LastExitCode = 1;
+                continue;
+            }
 
-            var args = CommandParser.Split(line);
+            var args = CommandParser.Split(result.Text);
             if (args.Count == 0)
                 continue;
 
