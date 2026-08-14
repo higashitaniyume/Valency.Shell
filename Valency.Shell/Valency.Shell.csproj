@@ -10,6 +10,21 @@
   <ItemGroup>
     <ProjectReference Include="..\Valency.Shell.Core\Valency.Shell.Core.csproj" />
     <ProjectReference Include="..\Valency.Shell.Engine\Valency.Shell.Engine.csproj" />
+    <ProjectReference Include="..\Valency.Shell.LogViewer\Valency.Shell.LogViewer.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageReference Include="Serilog.Sinks.Udp" Version="10.0.1" />
+  </ItemGroup>
+
+  <Target Name="CopyLogViewerToOutput" AfterTargets="Build">
+    <ItemGroup>
+      <_LogViewerOutput Include="..\Valency.Shell.LogViewer\bin\$(Configuration)\net9.0\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LogViewerOutput)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

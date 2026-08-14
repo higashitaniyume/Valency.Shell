@@ -1,11 +1,12 @@
 using System.Diagnostics;
+using Serilog;
 using Valency.Shell.Core.Resolution;
 
 namespace Valency.Shell.Engine;
 
 public static class ProcessRunner
 {
-    public static int Run(string command, IReadOnlyList<string> arguments)
+    public static int Run(string command, IReadOnlyList<string> arguments, ILogger? logger = null)
     {
         var resolved = PathResolver.Resolve(command);
         if (resolved is null)
@@ -13,6 +14,7 @@ public static class ProcessRunner
             Console.Error.WriteLine($"'{command}' 不是可识别的命令或可执行文件");
             return 127;
         }
+        logger?.Debug("PATH 解析: {Command} → {Path}", command, resolved);
 
         try
         {
@@ -33,7 +35,7 @@ public static class ProcessRunner
         }
     }
 
-    public static int RunPipeline(IReadOnlyList<string[]> commands, IList<Process>? foreground = null)
+    public static int RunPipeline(IReadOnlyList<string[]> commands, IList<Process>? foreground = null, ILogger? logger = null)
     {
         var processes = new List<Process>();
 
@@ -49,6 +51,7 @@ public static class ProcessRunner
                     Console.Error.WriteLine($"'{name}' 不是可识别的命令或可执行文件");
                     return 127;
                 }
+                logger?.Debug("PATH 解析: {Command} → {Path}", name, resolved);
 
                 var startInfo = CreateStartInfo(resolved, args);
                 if (i > 0) startInfo.RedirectStandardInput = true;
@@ -60,6 +63,7 @@ public static class ProcessRunner
                     Console.Error.WriteLine($"无法启动进程: {name}");
                     return 1;
                 }
+                logger?.Debug("管道启动进程 {Index}: {Command} (PID {Pid})", i, name, process.Id);
                 processes.Add(process);
                 foreground?.Add(process);
             }
@@ -100,7 +104,7 @@ public static class ProcessRunner
         }
     }
 
-    public static BackgroundJob? StartBackground(string command, IReadOnlyList<string> arguments)
+    public static BackgroundJob? StartBackground(string command, IReadOnlyList<string> arguments, ILogger? logger = null)
     {
         var resolved = PathResolver.Resolve(command);
         if (resolved is null)
@@ -108,6 +112,7 @@ public static class ProcessRunner
             Console.Error.WriteLine($"'{command}' 不是可识别的命令或可执行文件");
             return null;
         }
+        logger?.Debug("PATH 解析: {Command} → {Path}", command, resolved);
 
         var startInfo = CreateStartInfo(resolved, arguments);
         startInfo.RedirectStandardInput = true;

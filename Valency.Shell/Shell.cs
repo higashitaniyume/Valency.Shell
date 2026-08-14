@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Serilog;
 using Valency.Shell.Builtins;
 using Valency.Shell.Core.Expansion;
 using Valency.Shell.Core.Syntax;
@@ -23,6 +24,7 @@ public sealed class Shell : IShellContext
     private readonly LineEditor _editor = new();
     private readonly VariableExpander _expander;
     private readonly BuiltinRegistry _builtins;
+    private readonly ILogger _logger;
     private readonly List<BackgroundJob> _jobs = new();
     private readonly List<Process> _foreground = new();
     private int _nextJobId = 1;
@@ -37,9 +39,10 @@ public sealed class Shell : IShellContext
     public event EventHandler<JobEventArgs>? JobStarted;
     public event EventHandler<JobEventArgs>? JobCompleted;
 
-    public Shell(BuiltinRegistry builtins)
+    public Shell(BuiltinRegistry builtins, ILogger logger)
     {
         _builtins = builtins;
+        _logger = logger.ForContext<Shell>();
         _expander = new VariableExpander(new ShellVariableSource(this));
         Console.CancelKeyPress += OnCancelKeyPress;
     }
@@ -72,6 +75,7 @@ public sealed class Shell : IShellContext
     private void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
         e.Cancel = true;
+        _logger.Warning("收到 Ctrl+C，中断前台进程");
         lock (_foreground)
         {
             foreach (var process in _foreground)
@@ -114,9 +118,16 @@ public sealed class Shell : IShellContext
                 catch (FormatException ex)
                 {
                     Console.Error.WriteLine(ex.Message);
+                    _logger.Error(ex, "解析失败: {Line}", result.Text);
                     LastExitCode = 2;
                     continue;
                 }
+
+                _logger.Debug(
+                    "解析行: {Line} → {Count} 个命令 [{Commands}]",
+                    result.Text,
+                    parsed.Count,
+                    string.Join(", ", parsed.Select(p => $"{p.RawText}({p.Connector})")));
 
                 var runNext = true;
                 var i = 0;
@@ -157,7 +168,12 @@ public sealed class Shell : IShellContext
                         }
                         else
                         {
+                            var stopwatch = Stopwatch.StartNew();
                             var code = ExecuteGroup(group, out var exitSignal);
+                            stopwatch.Stop();
+                            _logger.Information(
+                                "命令完成 {Command} 退出码 {ExitCode} 耗时 {ElapsedMs}ms",
+                                rawCommand, LastExitCode, stopwatch.ElapsedMilliseconds);
                             CommandCompleted?.Invoke(this, new CommandCompletedEventArgs(rawCommand, LastExitCode));
                             if (exitSignal)
                                 return LastExitCode;
@@ -197,9 +213,11 @@ public sealed class Shell : IShellContext
 
     private string[] ExpandCommand(string rawText)
     {
-        return CommandParser.SplitTokens(rawText)
+        var expanded = CommandParser.SplitTokens(rawText)
             .Select(t => _expander.Expand(t))
             .ToArray();
+        _logger.Debug("命令展开: {Raw} → [{Expanded}]", rawText, string.Join(", ", expanded));
+        return expanded;
     }
 
     private int ExecuteGroup(IReadOnlyList<string[]> commands, out bool exitSignal)
@@ -218,7 +236,7 @@ public sealed class Shell : IShellContext
             }
         }
 
-        LastExitCode = ProcessRunner.RunPipeline(commands, _foreground);
+        LastExitCode = ProcessRunner.RunPipeline(commands, _foreground, _logger);
         return LastExitCode;
     }
 
@@ -239,7 +257,7 @@ public sealed class Shell : IShellContext
             return code;
         }
 
-        LastExitCode = ProcessRunner.Run(args[0], args.Skip(1).ToArray());
+        LastExitCode = ProcessRunner.Run(args[0], args.Skip(1).ToArray(), _logger);
         return LastExitCode;
     }
 
@@ -251,7 +269,7 @@ public sealed class Shell : IShellContext
             return;
         }
 
-        var job = ProcessRunner.StartBackground(args[0], args.Skip(1).ToArray());
+        var job = ProcessRunner.StartBackground(args[0], args.Skip(1).ToArray(), _logger);
         if (job is null)
         {
             LastExitCode = 127;
@@ -261,6 +279,7 @@ public sealed class Shell : IShellContext
         job.Id = _nextJobId++;
         _jobs.Add(job);
         Console.Out.WriteLine($"[{job.Id}] {job.Process.Id}");
+        _logger.Information("作业启动 [{JobId}] {Command} (PID {Pid})", job.Id, job.Command, job.Process.Id);
         JobStarted?.Invoke(this, new JobEventArgs(job));
     }
 
@@ -280,6 +299,7 @@ public sealed class Shell : IShellContext
             if (output.Length > 0)
                 Console.Out.Write(output);
 
+            _logger.Information("作业完成 [{JobId}] 退出码 {ExitCode}", job.Id, job.ExitCode);
             job.Process.Dispose();
             _jobs.RemoveAt(i);
             JobCompleted?.Invoke(this, new JobEventArgs(job));

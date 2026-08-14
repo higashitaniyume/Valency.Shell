@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="Valency.Shell.Core/Valency.Shell.Core.csproj" />
   <Project Path="Valency.Shell.Engine/Valency.Shell.Engine.csproj" />
+  <Project Path="Valency.Shell.LogViewer/Valency.Shell.LogViewer.csproj" />
   <Project Path="Valency.Shell.Tests/Valency.Shell.Tests.csproj" />
   <Project Path="Valency.Shell/Valency.Shell.csproj" />
 </Solution>
