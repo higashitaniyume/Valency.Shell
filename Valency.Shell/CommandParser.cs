@@ -2,60 +2,101 @@ using System.Text;
 
 namespace Valency.Shell;
 
+public readonly record struct TokenSegment(string Text, bool Expand);
+
+public sealed record Token(IReadOnlyList<TokenSegment> Segments)
+{
+    public string Text => string.Concat(Segments.Select(s => s.Text));
+    public bool Expandable => Segments.Any(s => s.Expand);
+}
+
 public static class CommandParser
 {
     public static List<string> Split(string input)
     {
-        var result = new List<string>();
+        return SplitTokens(input).Select(t => t.Text).ToList();
+    }
+
+    public static List<Token> SplitTokens(string input)
+    {
+        var tokens = new List<Token>();
+        var segments = new List<TokenSegment>();
         var current = new StringBuilder();
-        var inQuotes = false;
+        var currentExpand = true;
         var hasToken = false;
+
+        void FlushSegment()
+        {
+            if (current.Length > 0)
+            {
+                segments.Add(new TokenSegment(current.ToString(), currentExpand));
+                current.Clear();
+            }
+        }
+
+        void FlushToken()
+        {
+            FlushSegment();
+            if (segments.Count > 0 || hasToken)
+            {
+                tokens.Add(new Token(segments.ToArray()));
+                segments.Clear();
+                hasToken = false;
+            }
+        }
 
         for (var i = 0; i < input.Length; i++)
         {
             var ch = input[i];
-            if (inQuotes)
+
+            if (ch == '\'')
             {
-                if (ch == '\\' && i + 1 < input.Length && input[i + 1] == '"')
+                FlushSegment();
+                currentExpand = false;
+                hasToken = true;
+                i++;
+                while (i < input.Length && input[i] != '\'')
                 {
-                    current.Append('"');
+                    current.Append(input[i]);
                     i++;
                 }
-                else if (ch == '"')
-                {
-                    inQuotes = false;
-                }
-                else
-                {
-                    current.Append(ch);
-                }
+                if (i >= input.Length)
+                    throw new FormatException("单引号未闭合");
+                FlushSegment();
+                currentExpand = true;
+                continue;
             }
-            else if (ch == '"')
+
+            if (ch == '"')
             {
-                inQuotes = true;
                 hasToken = true;
-            }
-            else if (char.IsWhiteSpace(ch))
-            {
-                if (hasToken || current.Length > 0)
+                i++;
+                while (i < input.Length && input[i] != '"')
                 {
-                    result.Add(current.ToString());
-                    current.Clear();
-                    hasToken = false;
+                    if (input[i] == '\\' && i + 1 < input.Length && input[i + 1] == '"')
+                    {
+                        current.Append('"');
+                        i += 2;
+                        continue;
+                    }
+                    current.Append(input[i]);
+                    i++;
                 }
+                if (i >= input.Length)
+                    throw new FormatException("引号未闭合");
+                continue;
             }
-            else
+
+            if (char.IsWhiteSpace(ch))
             {
-                current.Append(ch);
+                FlushToken();
+                continue;
             }
+
+            current.Append(ch);
         }
 
-        if (inQuotes)
-            throw new FormatException("引号未闭合");
-
-        if (hasToken || current.Length > 0)
-            result.Add(current.ToString());
-
-        return result;
+        FlushToken();
+        return tokens;
     }
 }

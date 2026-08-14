@@ -13,6 +13,7 @@ public readonly record struct LineResult(LineResultKind Kind, string Text);
 
 public sealed class LineEditor
 {
+    private readonly Highlighter _highlighter = new();
     private readonly List<string> _history = new();
     private readonly StringBuilder _buffer = new();
     private int _cursor;
@@ -238,7 +239,20 @@ public sealed class LineEditor
         var width = Math.Max(Console.BufferWidth, 1);
         Console.Out.Write('\r');
         Console.Out.Write(_prompt);
-        Console.Out.Write(_buffer);
+
+        var text = _buffer.ToString();
+        var pos = 0;
+        foreach (var span in _highlighter.Highlight(text))
+        {
+            if (span.Start > pos)
+                Console.Out.Write(text[pos..span.Start]);
+            Console.ForegroundColor = span.Color;
+            Console.Out.Write(text.Substring(span.Start, span.Length));
+            Console.ResetColor();
+            pos = span.Start + span.Length;
+        }
+        if (pos < text.Length)
+            Console.Out.Write(text[pos..]);
 
         var total = _prompt.Length + _buffer.Length;
         if (_renderedLength > total)

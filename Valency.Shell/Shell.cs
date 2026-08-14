@@ -3,8 +3,28 @@ namespace Valency.Shell;
 public sealed class Shell
 {
     private readonly LineEditor _editor = new();
+    private readonly VariableExpander _expander;
     private string? _previousDirectory;
     public int LastExitCode { get; private set; }
+
+    public Shell()
+    {
+        _expander = new VariableExpander(new ShellVariableSource(this));
+    }
+
+    private sealed class ShellVariableSource(Shell shell) : IVariableSource
+    {
+        public bool TryGet(string name, out string? value)
+        {
+            if (name == "?")
+            {
+                value = shell.LastExitCode.ToString();
+                return true;
+            }
+            value = Environment.GetEnvironmentVariable(name);
+            return value is not null;
+        }
+    }
 
     public int Run()
     {
@@ -19,7 +39,9 @@ public sealed class Shell
                 continue;
             }
 
-            var args = CommandParser.Split(result.Text);
+            var args = CommandParser.SplitTokens(result.Text)
+                .Select(t => _expander.Expand(t))
+                .ToList();
             if (args.Count == 0)
                 continue;
 
