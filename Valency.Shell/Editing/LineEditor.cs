@@ -237,7 +237,13 @@ public sealed class LineEditor
 
     private void Render()
     {
-        var width = Math.Max(Console.BufferWidth, 1);
+        var width = Console.BufferWidth > 0 ? Console.BufferWidth
+            : Console.WindowWidth > 0 ? Console.WindowWidth
+            : 80;
+        var height = Console.BufferHeight > 0 ? Console.BufferHeight
+            : Console.WindowHeight > 0 ? Console.WindowHeight
+            : 24;
+
         Console.Out.Write('\r');
         Console.Out.Write(_prompt);
 
@@ -265,7 +271,7 @@ public sealed class LineEditor
         if (_renderedLength > total)
             cursorAbs -= _renderedLength - total;
 
-        var top = Math.Clamp(cursorAbs / width, 0, Console.BufferHeight - 1);
+        var top = Math.Clamp(cursorAbs / width, 0, Math.Max(height - 1, 0));
         var left = cursorAbs % width;
         Console.SetCursorPosition(left, top);
     }

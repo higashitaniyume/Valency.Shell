@@ -4,19 +4,32 @@ public static class PathResolver
 {
     public static string? Resolve(string command)
     {
+        return Resolve(command, IsExecutable);
+    }
+
+    public static string? Resolve(string command, Func<string, bool> isExecutable)
+    {
         if (command.Contains(Path.DirectorySeparatorChar) || command.Contains(Path.AltDirectorySeparatorChar))
         {
             var full = Path.GetFullPath(command, Environment.CurrentDirectory);
-            return File.Exists(full) ? full : null;
+            return isExecutable(full) ? full : null;
         }
 
-        var pathExt = (Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD")
-            .Split(';', StringSplitOptions.RemoveEmptyEntries);
-
         var hasExtension = !string.IsNullOrEmpty(Path.GetExtension(command));
-        var candidates = hasExtension
-            ? new[] { command }
-            : pathExt.Select(ext => command + ext);
+
+        string[] candidates;
+        var pathExt = Environment.GetEnvironmentVariable("PATHEXT");
+        if (!hasExtension && !string.IsNullOrWhiteSpace(pathExt))
+        {
+            candidates = pathExt
+                .Split(';', StringSplitOptions.RemoveEmptyEntries)
+                .Select(ext => command + ext)
+                .ToArray();
+        }
+        else
+        {
+            candidates = [command];
+        }
 
         var searchDirs = new[] { Environment.CurrentDirectory }
             .Concat((Environment.GetEnvironmentVariable("PATH") ?? "")
@@ -29,7 +42,7 @@ public static class PathResolver
                 try
                 {
                     var full = Path.Combine(dir, candidate);
-                    if (File.Exists(full))
+                    if (isExecutable(full))
                         return full;
                 }
                 catch (ArgumentException)
@@ -39,5 +52,23 @@ public static class PathResolver
         }
 
         return null;
+    }
+
+    private static bool IsExecutable(string path)
+    {
+        if (!File.Exists(path))
+            return false;
+        if (OperatingSystem.IsWindows())
+            return true;
+
+        try
+        {
+            var mode = File.GetUnixFileMode(path);
+            return (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 }

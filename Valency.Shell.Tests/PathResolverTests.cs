@@ -54,4 +54,45 @@ public class PathResolverTests : IDisposable
     {
         Assert.Null(PathResolver.Resolve("definitely-not-a-command-xyz"));
     }
+
+    [Fact]
+    public void Resolve_WithoutPathExt_MatchesBareName()
+    {
+        var originalPathExt = Environment.GetEnvironmentVariable("PATHEXT");
+        var bare = Path.Combine(_tempDir, "mytool");
+        File.WriteAllText(bare, "");
+        Environment.SetEnvironmentVariable("PATHEXT", null);
+        try
+        {
+            var resolved = PathResolver.Resolve("mytool", File.Exists);
+            Assert.Equal(bare, resolved, ignoreCase: true);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATHEXT", originalPathExt);
+        }
+    }
+
+    [Fact]
+    public void Resolve_UsesInjectedExecutablePredicate()
+    {
+        // On Unix a file without an execute bit is not a valid command; the
+        // injectable predicate models that (DefaultIsExecutable checks the bit).
+        var bare = Path.Combine(_tempDir, "tool.sh");
+        File.WriteAllText(bare, "");
+        var originalPathExt = Environment.GetEnvironmentVariable("PATHEXT");
+        Environment.SetEnvironmentVariable("PATHEXT", null);
+        try
+        {
+            Assert.Null(PathResolver.Resolve("tool.sh", _ => false));
+            Assert.Equal(
+                bare,
+                PathResolver.Resolve("tool.sh", p => File.Exists(p) && p.EndsWith(".sh", StringComparison.OrdinalIgnoreCase)),
+                ignoreCase: true);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATHEXT", originalPathExt);
+        }
+    }
 }
