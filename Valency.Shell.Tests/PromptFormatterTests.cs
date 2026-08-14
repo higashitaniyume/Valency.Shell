@@ -28,13 +28,13 @@ public class PromptFormatterTests
     }
 
     [Fact]
-    public void BuildKali_NonAdmin_UsesDollar()
+    public void BuildKali_NonAdmin_UsesAtConnectorAndDollarSharp()
     {
         var formatter = new PromptFormatter(() => false);
         var prompt = formatter.BuildKali();
         var stripped = PromptFormatter.StripAnsi(prompt.Raw);
         Assert.Contains("└─$", stripped);
-        Assert.DoesNotContain("@", stripped);
+        Assert.Contains("@" + Environment.MachineName, stripped);
     }
 
     [Fact]

@@ -33,7 +33,7 @@ public sealed class PromptVariableSource : IVariableSource
                 value = _isAdmin() ? "#" : "$";
                 return true;
             case "CONN":
-                value = _isAdmin() ? "@" : "$";
+                value = "@";
                 return true;
             default:
                 value = Environment.GetEnvironmentVariable(name);

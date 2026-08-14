@@ -46,11 +46,10 @@ public sealed class PromptFormatter
         var user = Environment.UserName;
         var dir = PromptVariableSource.AbbreviateHome(Environment.CurrentDirectory);
         var sharp = admin ? "#" : "$";
-        var conn = admin ? "@" : "$";
         var userColor = admin ? BoldRed : Green;
 
         var line = userColor + user + Reset
-            + Green + conn + Reset
+            + Green + "@" + Reset
             + BoldBlue + dir + Reset
             + BoldRed + sharp + Reset
             + " ";
@@ -65,12 +64,11 @@ public sealed class PromptFormatter
         var host = Environment.MachineName;
         var dir = PromptVariableSource.AbbreviateHome(Environment.CurrentDirectory);
         var sharp = admin ? "#" : "$";
-        var conn = admin ? "@" : "$";
         var userColor = admin ? BoldRed : Green;
 
         var line1 = Green + "┌──(" + Reset
             + userColor + user + Reset
-            + Green + conn + Reset
+            + Green + "@" + Reset
             + Green + host + Reset
             + Green + ")-[" + Reset
             + BoldBlue + dir + Reset
