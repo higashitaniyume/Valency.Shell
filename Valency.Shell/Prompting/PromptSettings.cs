@@ -6,7 +6,7 @@ public sealed class PromptSettings
     public const string Kali = "kali";
     public const string Custom = "custom";
 
-    public string Style { get; set; } = Kali;
+    public string Style { get; set; } = Plain;
     public string CustomTemplate { get; set; } = PromptFormatter.PlainTemplate;
 
     public Prompt Build(PromptFormatter formatter)
