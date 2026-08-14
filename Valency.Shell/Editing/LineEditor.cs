@@ -1,4 +1,5 @@
 using System.Text;
+using Valency.Shell.Core.Completion;
 using Valency.Shell.Core.Highlighting;
 using Valency.Shell.Prompting;
 
@@ -18,6 +19,7 @@ public sealed class LineEditor
     private readonly Highlighter _highlighter = new();
     private readonly List<string> _history = new();
     private readonly StringBuilder _buffer = new();
+    private readonly ICompleter? _completer;
     private int _cursor;
     private int _historyIndex;
     private string _savedLine = string.Empty;
@@ -29,6 +31,15 @@ public sealed class LineEditor
     private int _startTop;
     private int _startLeft;
     private int _ansiCursorRow;
+    private IReadOnlyList<string>? _completionCandidates;
+    private int _completionIndex;
+    private int _completionStart;
+    private int _completionEnd;
+
+    public LineEditor(ICompleter? completer = null)
+    {
+        _completer = completer;
+    }
 
     public LineResult ReadLine(Prompt prompt)
     {
@@ -87,10 +98,17 @@ public sealed class LineEditor
     {
         var ctrl = key.Modifiers.HasFlag(ConsoleModifiers.Control);
 
+        if (key.Key != ConsoleKey.Tab)
+            ResetCompletion();
+
         switch (key.Key)
         {
             case ConsoleKey.Enter:
                 return Submit();
+
+            case ConsoleKey.Tab when !ctrl:
+                Complete();
+                return null;
 
             case ConsoleKey.C when ctrl:
                 return new LineResult(LineResultKind.Cancelled, string.Empty);
@@ -197,6 +215,88 @@ public sealed class LineEditor
         if (!string.IsNullOrWhiteSpace(text) && (_history.Count == 0 || _history[^1] != text))
             _history.Add(text);
         return new LineResult(LineResultKind.Command, text);
+    }
+
+    private void Complete()
+    {
+        if (_completionCandidates is { } candidates)
+        {
+            CycleCandidate(candidates);
+            return;
+        }
+
+        var line = _buffer.ToString();
+        var result = _completer?.Complete(line, _cursor);
+        if (result is not { Candidates.Count: > 0 } r)
+            return;
+
+        var cands = r.Candidates;
+        var start = r.Start;
+        var token = line[start.._cursor];
+
+        if (cands.Count == 1)
+        {
+            ReplaceRange(start, _cursor, cands[0] + (r.IsCommand ? " " : ""));
+            return;
+        }
+
+        var lcp = LongestCommonPrefix(cands);
+        if (lcp.Length > token.Length)
+        {
+            ReplaceRange(start, _cursor, lcp);
+            _completionCandidates = cands;
+            _completionIndex = -1;
+            _completionStart = start;
+            _completionEnd = start + lcp.Length;
+            return;
+        }
+
+        _completionCandidates = cands;
+        _completionIndex = 0;
+        _completionStart = start;
+        ReplaceRange(start, _cursor, cands[0]);
+        _completionEnd = start + cands[0].Length;
+    }
+
+    private void CycleCandidate(IReadOnlyList<string> candidates)
+    {
+        _completionIndex = (_completionIndex + 1) % candidates.Count;
+        var value = candidates[_completionIndex];
+        ReplaceRange(_completionStart, _completionEnd, value);
+        _completionEnd = _completionStart + value.Length;
+    }
+
+    private void ResetCompletion()
+    {
+        _completionCandidates = null;
+        _completionIndex = 0;
+        _completionStart = 0;
+        _completionEnd = 0;
+    }
+
+    private void ReplaceRange(int start, int end, string value)
+    {
+        _buffer.Remove(start, end - start);
+        _buffer.Insert(start, value);
+        _cursor = start + value.Length;
+    }
+
+    private static string LongestCommonPrefix(IReadOnlyList<string> values)
+    {
+        if (values.Count == 0)
+            return string.Empty;
+
+        var prefix = values[0];
+        foreach (var value in values.Skip(1))
+        {
+            var i = 0;
+            while (i < prefix.Length && i < value.Length && prefix[i] == value[i])
+                i++;
+            prefix = prefix[..i];
+            if (prefix.Length == 0)
+                break;
+        }
+        return prefix;
     }
 
     private void MoveHistory(int delta)

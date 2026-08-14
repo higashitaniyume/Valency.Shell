@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Serilog;
 using Valency.Shell.Builtins;
+using Valency.Shell.Core.Completion;
 using Valency.Shell.Core.Expansion;
 using Valency.Shell.Core.Syntax;
 using Valency.Shell.Editing;
@@ -22,7 +23,7 @@ public sealed class JobEventArgs(BackgroundJob job) : EventArgs
 
 public sealed class Shell : IShellContext
 {
-    private readonly LineEditor _editor = new();
+    private readonly LineEditor _editor;
     private readonly VariableExpander _expander;
     private readonly BuiltinRegistry _builtins;
     private readonly ILogger _logger;
@@ -50,6 +51,7 @@ public sealed class Shell : IShellContext
         _promptFormatter = promptFormatter;
         _promptSettings = promptSettings;
         _expander = new VariableExpander(new ShellVariableSource(this));
+        _editor = new LineEditor(new CompletionEngine(builtins.Commands.Select(c => c.Spec.Name)));
         Console.CancelKeyPress += OnCancelKeyPress;
     }
 
