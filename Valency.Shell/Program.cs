@@ -2,7 +2,10 @@
 using Valency.Shell;
 using Valency.Shell.Builtins;
 using Valency.Shell.Logging;
+using Valency.Shell.Platform;
 using Valency.Shell.Prompting;
+
+WindowsConsole.Configure();
 
 Console.CancelKeyPress += (_, e) => e.Cancel = true;
 
