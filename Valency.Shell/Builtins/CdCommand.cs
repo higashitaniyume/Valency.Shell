@@ -4,11 +4,16 @@ namespace Valency.Shell.Builtins;
 
 public sealed class CdCommand : IBuiltinCommand
 {
-    public string Name => BuiltinNames.Cd;
-
-    public int Execute(IReadOnlyList<string> args, IShellContext context)
+    public CommandSpec Spec { get; } = new()
     {
-        var path = args.Count > 1 ? args[1] : null;
+        Name = BuiltinNames.Cd,
+        Summary = "切换当前目录。无参数回到用户目录，'-' 回到上一个目录。",
+        Positionals = ["[dir] 目标目录"],
+    };
+
+    public int Execute(ParseResult args, IShellContext context)
+    {
+        var path = args.Positionals.Count > 0 ? args.Positionals[0] : null;
         var target = path switch
         {
             null => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),

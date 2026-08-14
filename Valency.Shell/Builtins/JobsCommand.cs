@@ -4,9 +4,13 @@ namespace Valency.Shell.Builtins;
 
 public sealed class JobsCommand : IBuiltinCommand
 {
-    public string Name => BuiltinNames.Jobs;
+    public CommandSpec Spec { get; } = new()
+    {
+        Name = BuiltinNames.Jobs,
+        Summary = "列出正在运行的后台作业。",
+    };
 
-    public int Execute(IReadOnlyList<string> args, IShellContext context)
+    public int Execute(ParseResult args, IShellContext context)
     {
         context.PrintJobs();
         return 0;

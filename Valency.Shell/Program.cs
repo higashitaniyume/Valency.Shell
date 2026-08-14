@@ -2,6 +2,7 @@
 using Valency.Shell;
 using Valency.Shell.Builtins;
 using Valency.Shell.Logging;
+using Valency.Shell.Prompting;
 
 Console.CancelKeyPress += (_, e) => e.Cancel = true;
 
@@ -15,14 +16,22 @@ var exitCode = 1;
 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 try
 {
+    var promptSettings = LoadPromptSettings();
+    var promptFormatter = new PromptFormatter();
+
+    var help = new HelpCommand();
     var builtins = new BuiltinRegistry(
         new ExitCommand(),
         new CdCommand(),
         new PwdCommand(),
         new JobsCommand(),
-        new LogsCommand(logFilePath, ShellLogging.GetUdpPort()));
+        new LogsCommand(logFilePath, ShellLogging.GetUdpPort()),
+        new PromptCommand(promptSettings),
+        new GrepCommand(),
+        help);
+    help.Registry = builtins;
 
-    var shell = new Shell(builtins, Log.Logger);
+    var shell = new Shell(builtins, Log.Logger, promptFormatter, promptSettings);
     exitCode = shell.Run();
 }
 finally
@@ -35,3 +44,22 @@ finally
 }
 
 return exitCode;
+
+static PromptSettings LoadPromptSettings()
+{
+    var settings = new PromptSettings();
+
+    var style = Environment.GetEnvironmentVariable("VALENCY_PROMPT");
+    if (!string.IsNullOrWhiteSpace(style))
+        settings.Style = style.ToLowerInvariant();
+
+    var format = Environment.GetEnvironmentVariable("VALENCY_PROMPT_FORMAT");
+    if (!string.IsNullOrWhiteSpace(format))
+    {
+        settings.CustomTemplate = format;
+        if (settings.Style != PromptSettings.Custom)
+            settings.Style = PromptSettings.Custom;
+    }
+
+    return settings;
+}

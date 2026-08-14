@@ -1,5 +1,6 @@
 using System.Text;
 using Valency.Shell.Core.Highlighting;
+using Valency.Shell.Prompting;
 
 namespace Valency.Shell.Editing;
 
@@ -21,23 +22,29 @@ public sealed class LineEditor
     private int _historyIndex;
     private string _savedLine = string.Empty;
     private string _prompt = string.Empty;
+    private string _promptRaw = string.Empty;
+    private int _promptOffset;
+    private int _promptExtraRows;
     private int _renderedLength;
     private int _startTop;
     private int _startLeft;
     private int _ansiCursorRow;
 
-    public LineResult ReadLine(string prompt)
+    public LineResult ReadLine(Prompt prompt)
     {
         if (Console.IsInputRedirected)
         {
-            Console.Out.Write(prompt);
+            Console.Out.Write(PromptFormatter.StripAnsi(prompt.Raw));
             var line = Console.In.ReadLine();
             if (line is null)
                 return new LineResult(LineResultKind.Exit, string.Empty);
             return new LineResult(LineResultKind.Command, line);
         }
 
-        _prompt = prompt;
+        _prompt = prompt.LastLine;
+        _promptRaw = prompt.Raw;
+        _promptOffset = prompt.CursorOffset;
+        _promptExtraRows = CountNewlines(prompt.Raw);
         _buffer.Clear();
         _cursor = 0;
         _historyIndex = _history.Count;
@@ -53,7 +60,7 @@ public sealed class LineEditor
                 _startLeft = Console.CursorLeft;
             }
             _ansiCursorRow = 0;
-            Console.Out.Write(prompt);
+            Console.Out.Write(prompt.Raw);
             Console.Out.Flush();
 
             while (true)
@@ -99,7 +106,7 @@ public sealed class LineEditor
                 _startTop = 0;
                 _startLeft = 0;
                 _ansiCursorRow = 0;
-                Console.Out.Write(_prompt);
+                Console.Out.Write(_promptRaw);
                 _renderedLength = 0;
                 return null;
 
@@ -262,17 +269,19 @@ public sealed class LineEditor
         var width = Console.BufferWidth > 0 ? Console.BufferWidth : 80;
         var height = Console.BufferHeight > 0 ? Console.BufferHeight : 24;
 
-        Console.SetCursorPosition(_startLeft, _startTop);
+        var lineStartTop = _startTop + _promptExtraRows;
+        var lineStartCol = _promptExtraRows == 0 ? _startLeft : 0;
+        Console.SetCursorPosition(lineStartCol, lineStartTop);
         Console.Out.Write(_prompt);
         WriteHighlighted(_buffer.ToString());
 
-        var total = _prompt.Length + _buffer.Length;
+        var total = _promptOffset + _buffer.Length;
         if (_renderedLength > total)
             Console.Out.Write(new string(' ', _renderedLength - total));
         _renderedLength = total;
 
-        var targetAbs = _startLeft + _prompt.Length + _cursor;
-        var top = Math.Clamp(_startTop + targetAbs / width, 0, Math.Max(height - 1, 0));
+        var targetAbs = _promptOffset + _cursor;
+        var top = Math.Clamp(lineStartTop + targetAbs / width, 0, Math.Max(height - 1, 0));
         var left = targetAbs % width;
         Console.SetCursorPosition(left, top);
     }
@@ -292,8 +301,8 @@ public sealed class LineEditor
         // 清除光标到屏幕尾的残留（内容变短时抹掉旧字符）
         Console.Out.Write("\x1b[J");
 
-        var total = _prompt.Length + _buffer.Length;
-        var targetAbs = _prompt.Length + _cursor;
+        var total = _promptOffset + _buffer.Length;
+        var targetAbs = _promptOffset + _cursor;
         var endRow = total / width;
         var targetRow = targetAbs / width;
         var targetCol = targetAbs % width;
@@ -307,6 +316,17 @@ public sealed class LineEditor
             Console.Out.Write($"\x1b[{targetCol - curCol}C");
 
         _ansiCursorRow = targetRow;
+    }
+
+    private static int CountNewlines(string text)
+    {
+        var count = 0;
+        foreach (var c in text)
+        {
+            if (c == '\n')
+                count++;
+        }
+        return count;
     }
 
     private void WriteHighlighted(string text)

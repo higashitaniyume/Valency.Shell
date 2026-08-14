@@ -15,50 +15,27 @@ public sealed class LogsCommand : IBuiltinCommand
         _udpPort = udpPort;
     }
 
-    public string Name => BuiltinNames.Logs;
-
-    public int Execute(IReadOnlyList<string> args, IShellContext context)
+    public CommandSpec Spec { get; } = new()
     {
-        var tail = -1;
-        var head = -1;
-        string? level = null;
-        var follow = false;
+        Name = BuiltinNames.Logs,
+        Summary = "查看当前会话日志，默认显示全部（从开始到现在）。",
+        Options =
+        [
+            new("tail", 'n', "只显示最近 N 行", false, "N"),
+            new("head", null, "只显示最前 N 行", false, "N"),
+            new("level", null, "按级别过滤: debug|info|warn|error|fatal", false, "LEVEL"),
+            new("follow", 'f', "在独立窗口实时跟随日志 (UDP)", true),
+        ],
+    };
 
-        for (var i = 1; i < args.Count; i++)
-        {
-            switch (args[i])
-            {
-                case "-h" or "--help":
-                    PrintHelp();
-                    return 0;
-                case "-f" or "--follow":
-                    follow = true;
-                    break;
-                case "-n" or "--tail":
-                    if (!TryReadInt(args, ref i, out tail))
-                        return 2;
-                    break;
-                case "--head":
-                    if (!TryReadInt(args, ref i, out head))
-                        return 2;
-                    break;
-                case "--level":
-                    if (i + 1 >= args.Count)
-                    {
-                        Console.Error.WriteLine("logs: --level 需要一个值");
-                        return 2;
-                    }
-                    level = args[++i];
-                    break;
-                default:
-                    Console.Error.WriteLine($"logs: 未知参数 '{args[i]}'，用 logs --help 查看帮助");
-                    return 2;
-            }
-        }
-
-        if (follow)
+    public int Execute(ParseResult args, IShellContext context)
+    {
+        if (args.Has("follow"))
             return Follow();
 
+        var tail = args.GetInt("tail") ?? -1;
+        var head = args.GetInt("head") ?? -1;
+        var level = args.Get("level");
         return PrintRange(head, tail, level);
     }
 
@@ -109,18 +86,6 @@ public sealed class LogsCommand : IBuiltinCommand
         return 0;
     }
 
-    private static bool TryReadInt(IReadOnlyList<string> args, ref int i, out int value)
-    {
-        value = -1;
-        if (i + 1 >= args.Count || !int.TryParse(args[i + 1], out value))
-        {
-            Console.Error.WriteLine($"logs: {args[i]} 需要一个数字");
-            return false;
-        }
-        i++;
-        return true;
-    }
-
     private static string? ResolveViewerPath()
     {
         var candidate = Path.Combine(AppContext.BaseDirectory, "Valency.Shell.LogViewer.exe");
@@ -148,17 +113,5 @@ public sealed class LogsCommand : IBuiltinCommand
         Console.ForegroundColor = color;
         Console.Out.WriteLine(raw);
         Console.ForegroundColor = previous;
-    }
-
-    private static void PrintHelp()
-    {
-        Console.Out.WriteLine("用法: logs [选项]");
-        Console.Out.WriteLine("默认显示当前会话的全部日志（从开始到现在）。");
-        Console.Out.WriteLine();
-        Console.Out.WriteLine("  -h, --help        显示本帮助");
-        Console.Out.WriteLine("  -n, --tail N      只显示最近 N 行");
-        Console.Out.WriteLine("      --head N      只显示最前 N 行");
-        Console.Out.WriteLine("      --level <lvl> 按级别过滤: debug|info|warn|error|fatal");
-        Console.Out.WriteLine("  -f, --follow      在独立窗口实时跟随日志 (UDP)");
     }
 }

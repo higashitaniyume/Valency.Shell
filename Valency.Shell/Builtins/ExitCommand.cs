@@ -4,11 +4,18 @@ namespace Valency.Shell.Builtins;
 
 public sealed class ExitCommand : IBuiltinCommand
 {
-    public string Name => BuiltinNames.Exit;
-
-    public int Execute(IReadOnlyList<string> args, IShellContext context)
+    public CommandSpec Spec { get; } = new()
     {
-        var code = args.Count > 1 && int.TryParse(args[1], out var c) ? c : context.LastExitCode;
+        Name = BuiltinNames.Exit,
+        Summary = "退出 shell。",
+        Positionals = ["[code] 退出码，默认使用上一条命令的退出码"],
+    };
+
+    public int Execute(ParseResult args, IShellContext context)
+    {
+        var code = args.Positionals.Count > 0 && int.TryParse(args.Positionals[0], out var c)
+            ? c
+            : context.LastExitCode;
         context.RequestExit(code);
         return code;
     }

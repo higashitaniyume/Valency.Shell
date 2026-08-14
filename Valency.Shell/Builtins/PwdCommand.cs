@@ -4,9 +4,13 @@ namespace Valency.Shell.Builtins;
 
 public sealed class PwdCommand : IBuiltinCommand
 {
-    public string Name => BuiltinNames.Pwd;
+    public CommandSpec Spec { get; } = new()
+    {
+        Name = BuiltinNames.Pwd,
+        Summary = "打印当前工作目录。",
+    };
 
-    public int Execute(IReadOnlyList<string> args, IShellContext context)
+    public int Execute(ParseResult args, IShellContext context)
     {
         Console.Out.WriteLine(Environment.CurrentDirectory);
         return 0;

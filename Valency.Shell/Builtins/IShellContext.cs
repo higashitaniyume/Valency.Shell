@@ -8,4 +8,5 @@ public interface IShellContext
     int RequestedExitCode { get; }
     void RequestExit(int exitCode);
     void PrintJobs();
+    TextReader? PipelineInput { get; }
 }

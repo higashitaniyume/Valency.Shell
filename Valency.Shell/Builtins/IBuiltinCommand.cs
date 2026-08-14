@@ -2,6 +2,6 @@ namespace Valency.Shell.Builtins;
 
 public interface IBuiltinCommand
 {
-    string Name { get; }
-    int Execute(IReadOnlyList<string> args, IShellContext context);
+    CommandSpec Spec { get; }
+    int Execute(ParseResult args, IShellContext context);
 }

@@ -104,6 +104,80 @@ public static class ProcessRunner
         }
     }
 
+    public static string RunPipelineCaptured(
+        IReadOnlyList<string[]> commands,
+        IList<Process>? foreground,
+        ILogger? logger,
+        out int exitCode)
+    {
+        var processes = new List<Process>();
+        exitCode = 127;
+
+        try
+        {
+            for (var i = 0; i < commands.Count; i++)
+            {
+                var name = commands[i][0];
+                var args = commands[i].Skip(1).ToArray();
+                var resolved = PathResolver.Resolve(name);
+                if (resolved is null)
+                {
+                    Console.Error.WriteLine($"'{name}' 不是可识别的命令或可执行文件");
+                    return string.Empty;
+                }
+                logger?.Debug("PATH 解析: {Command} → {Path}", name, resolved);
+
+                var startInfo = CreateStartInfo(resolved, args);
+                if (i > 0) startInfo.RedirectStandardInput = true;
+                startInfo.RedirectStandardOutput = true;
+
+                var process = Process.Start(startInfo);
+                if (process is null)
+                {
+                    Console.Error.WriteLine($"无法启动进程: {name}");
+                    exitCode = 1;
+                    return string.Empty;
+                }
+                logger?.Debug("管道启动进程 {Index}: {Command} (PID {Pid})", i, name, process.Id);
+                processes.Add(process);
+                foreground?.Add(process);
+            }
+
+            for (var i = 0; i < processes.Count - 1; i++)
+                _ = BridgeAsync(processes[i].StandardOutput, processes[i + 1].StandardInput);
+
+            var lastOutput = processes[^1].StandardOutput.ReadToEndAsync();
+
+            foreach (var process in processes)
+                process.WaitForExit();
+
+            exitCode = processes[^1].ExitCode;
+            return lastOutput.Result;
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            Console.Error.WriteLine($"启动管道失败: {ex.Message}");
+            exitCode = 1;
+            return string.Empty;
+        }
+        finally
+        {
+            foreach (var process in processes)
+            {
+                foreground?.Remove(process);
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch (Exception)
+                {
+                }
+                process.Dispose();
+            }
+        }
+    }
+
     public static BackgroundJob? StartBackground(string command, IReadOnlyList<string> arguments, ILogger? logger = null)
     {
         var resolved = PathResolver.Resolve(command);

@@ -5,6 +5,7 @@ using Valency.Shell.Core.Expansion;
 using Valency.Shell.Core.Syntax;
 using Valency.Shell.Editing;
 using Valency.Shell.Engine;
+using Valency.Shell.Prompting;
 
 namespace Valency.Shell;
 
@@ -25,11 +26,14 @@ public sealed class Shell : IShellContext
     private readonly VariableExpander _expander;
     private readonly BuiltinRegistry _builtins;
     private readonly ILogger _logger;
+    private readonly PromptFormatter _promptFormatter;
+    private readonly PromptSettings _promptSettings;
     private readonly List<BackgroundJob> _jobs = new();
     private readonly List<Process> _foreground = new();
     private int _nextJobId = 1;
     private bool _exitRequested;
     private int _requestedExitCode;
+    private TextReader? _pipelineInput;
 
     public int LastExitCode { get; set; }
     public string? PreviousDirectory { get; set; }
@@ -39,10 +43,12 @@ public sealed class Shell : IShellContext
     public event EventHandler<JobEventArgs>? JobStarted;
     public event EventHandler<JobEventArgs>? JobCompleted;
 
-    public Shell(BuiltinRegistry builtins, ILogger logger)
+    public Shell(BuiltinRegistry builtins, ILogger logger, PromptFormatter promptFormatter, PromptSettings promptSettings)
     {
         _builtins = builtins;
         _logger = logger.ForContext<Shell>();
+        _promptFormatter = promptFormatter;
+        _promptSettings = promptSettings;
         _expander = new VariableExpander(new ShellVariableSource(this));
         Console.CancelKeyPress += OnCancelKeyPress;
     }
@@ -63,6 +69,8 @@ public sealed class Shell : IShellContext
 
     bool IShellContext.ExitRequested => _exitRequested;
     int IShellContext.RequestedExitCode => _requestedExitCode;
+
+    TextReader? IShellContext.PipelineInput => _pipelineInput;
 
     void IShellContext.RequestExit(int exitCode)
     {
@@ -101,7 +109,7 @@ public sealed class Shell : IShellContext
             {
                 ReapJobs();
 
-                var result = _editor.ReadLine($"valency {Environment.CurrentDirectory}> ");
+                var result = _editor.ReadLine(_promptSettings.Build(_promptFormatter));
                 if (result.Kind == LineResultKind.Exit)
                     return LastExitCode;
                 if (result.Kind == LineResultKind.Cancelled)
@@ -227,17 +235,37 @@ public sealed class Shell : IShellContext
         if (commands.Count == 1)
             return ExecuteSingle(commands[0], out exitSignal);
 
-        foreach (var command in commands)
+        var lastIsBuiltin = _builtins.TryGet(commands[^1][0], out var lastBuiltin);
+
+        if (!lastIsBuiltin)
         {
-            if (_builtins.TryGet(command[0], out _))
+            foreach (var command in commands)
             {
-                Console.Error.WriteLine("内置命令不支持管道");
-                return 2;
+                if (_builtins.TryGet(command[0], out _))
+                {
+                    Console.Error.WriteLine("内置命令只能作为管道的最后一个命令");
+                    return 2;
+                }
             }
+
+            LastExitCode = ProcessRunner.RunPipeline(commands, _foreground, _logger);
+            return LastExitCode;
         }
 
-        LastExitCode = ProcessRunner.RunPipeline(commands, _foreground, _logger);
-        return LastExitCode;
+        var external = commands.Take(commands.Count - 1).ToArray();
+        var captured = ProcessRunner.RunPipelineCaptured(external, _foreground, _logger, out var pipelineExit);
+        LastExitCode = pipelineExit;
+
+        var last = commands[^1];
+        _pipelineInput = new StringReader(captured);
+        try
+        {
+            return ExecuteBuiltin(lastBuiltin, last, out exitSignal);
+        }
+        finally
+        {
+            _pipelineInput = null;
+        }
     }
 
     private int ExecuteSingle(string[] args, out bool exitSignal)
@@ -245,20 +273,41 @@ public sealed class Shell : IShellContext
         exitSignal = false;
 
         if (_builtins.TryGet(args[0], out var builtin))
-        {
-            var code = builtin.Execute(args, this);
-            if (_exitRequested)
-            {
-                exitSignal = true;
-                LastExitCode = _requestedExitCode;
-                return LastExitCode;
-            }
-            LastExitCode = code;
-            return code;
-        }
+            return ExecuteBuiltin(builtin, args, out exitSignal);
 
         LastExitCode = ProcessRunner.Run(args[0], args.Skip(1).ToArray(), _logger);
         return LastExitCode;
+    }
+
+    private int ExecuteBuiltin(IBuiltinCommand builtin, string[] args, out bool exitSignal)
+    {
+        exitSignal = false;
+
+        var parseResult = ArgParser.Parse(args.Skip(1).ToArray(), builtin.Spec, out var error);
+        if (parseResult is null)
+        {
+            Console.Error.WriteLine($"{args[0]}: {error}");
+            LastExitCode = 2;
+            return 2;
+        }
+
+        if (parseResult.HelpRequested)
+        {
+            HelpRenderer.PrintCommand(builtin.Spec);
+            LastExitCode = 0;
+            return 0;
+        }
+
+        var code = builtin.Execute(parseResult, this);
+        if (_exitRequested)
+        {
+            exitSignal = true;
+            LastExitCode = _requestedExitCode;
+            return LastExitCode;
+        }
+
+        LastExitCode = code;
+        return code;
     }
 
     private void StartBackground(string[] args)
