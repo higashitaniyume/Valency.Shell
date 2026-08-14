@@ -22,6 +22,9 @@ public sealed class LineEditor
     private string _savedLine = string.Empty;
     private string _prompt = string.Empty;
     private int _renderedLength;
+    private int _startTop;
+    private int _startLeft;
+    private int _ansiCursorRow;
 
     public LineResult ReadLine(string prompt)
     {
@@ -44,8 +47,14 @@ public sealed class LineEditor
         Console.TreatControlCAsInput = true;
         try
         {
+            if (OperatingSystem.IsWindows())
+            {
+                _startTop = Console.CursorTop;
+                _startLeft = Console.CursorLeft;
+            }
+            _ansiCursorRow = 0;
             Console.Out.Write(prompt);
-            _renderedLength = 0;
+            Console.Out.Flush();
 
             while (true)
             {
@@ -54,6 +63,7 @@ public sealed class LineEditor
                 if (result.HasValue)
                 {
                     Console.Out.WriteLine();
+                    Console.Out.Flush();
                     return result.Value;
                 }
 
@@ -86,6 +96,9 @@ public sealed class LineEditor
 
             case ConsoleKey.L when ctrl:
                 Console.Clear();
+                _startTop = 0;
+                _startLeft = 0;
+                _ansiCursorRow = 0;
                 Console.Out.Write(_prompt);
                 _renderedLength = 0;
                 return null;
@@ -237,17 +250,67 @@ public sealed class LineEditor
 
     private void Render()
     {
-        var width = Console.BufferWidth > 0 ? Console.BufferWidth
-            : Console.WindowWidth > 0 ? Console.WindowWidth
-            : 80;
-        var height = Console.BufferHeight > 0 ? Console.BufferHeight
-            : Console.WindowHeight > 0 ? Console.WindowHeight
-            : 24;
+        if (OperatingSystem.IsWindows())
+            RenderWindows();
+        else
+            RenderAnsi();
+        Console.Out.Flush();
+    }
 
-        Console.Out.Write('\r');
+    private void RenderWindows()
+    {
+        var width = Console.BufferWidth > 0 ? Console.BufferWidth : 80;
+        var height = Console.BufferHeight > 0 ? Console.BufferHeight : 24;
+
+        Console.SetCursorPosition(_startLeft, _startTop);
         Console.Out.Write(_prompt);
+        WriteHighlighted(_buffer.ToString());
 
-        var text = _buffer.ToString();
+        var total = _prompt.Length + _buffer.Length;
+        if (_renderedLength > total)
+            Console.Out.Write(new string(' ', _renderedLength - total));
+        _renderedLength = total;
+
+        var targetAbs = _startLeft + _prompt.Length + _cursor;
+        var top = Math.Clamp(_startTop + targetAbs / width, 0, Math.Max(height - 1, 0));
+        var left = targetAbs % width;
+        Console.SetCursorPosition(left, top);
+    }
+
+    private void RenderAnsi()
+    {
+        var width = Console.WindowWidth > 0 ? Console.WindowWidth : 80;
+
+        // 回到提示符起始行（相对移动，不读取 Console.CursorTop，SSH/PTY 下其值不可靠）
+        if (_ansiCursorRow > 0)
+            Console.Out.Write($"\x1b[{_ansiCursorRow}A");
+        Console.Out.Write('\r');
+
+        Console.Out.Write(_prompt);
+        WriteHighlighted(_buffer.ToString());
+
+        // 清除光标到屏幕尾的残留（内容变短时抹掉旧字符）
+        Console.Out.Write("\x1b[J");
+
+        var total = _prompt.Length + _buffer.Length;
+        var targetAbs = _prompt.Length + _cursor;
+        var endRow = total / width;
+        var targetRow = targetAbs / width;
+        var targetCol = targetAbs % width;
+        var curCol = total % width;
+
+        if (endRow > targetRow)
+            Console.Out.Write($"\x1b[{endRow - targetRow}A");
+        if (curCol > targetCol)
+            Console.Out.Write($"\x1b[{curCol - targetCol}D");
+        else if (curCol < targetCol)
+            Console.Out.Write($"\x1b[{targetCol - curCol}C");
+
+        _ansiCursorRow = targetRow;
+    }
+
+    private void WriteHighlighted(string text)
+    {
         var pos = 0;
         foreach (var span in _highlighter.Highlight(text))
         {
@@ -260,19 +323,5 @@ public sealed class LineEditor
         }
         if (pos < text.Length)
             Console.Out.Write(text[pos..]);
-
-        var total = _prompt.Length + _buffer.Length;
-        if (_renderedLength > total)
-            Console.Out.Write(new string(' ', _renderedLength - total));
-        _renderedLength = Math.Max(_renderedLength, total);
-
-        var endAbs = Console.CursorTop * width + Console.CursorLeft;
-        var cursorAbs = endAbs - (_buffer.Length - _cursor);
-        if (_renderedLength > total)
-            cursorAbs -= _renderedLength - total;
-
-        var top = Math.Clamp(cursorAbs / width, 0, Math.Max(height - 1, 0));
-        var left = cursorAbs % width;
-        Console.SetCursorPosition(left, top);
     }
 }
