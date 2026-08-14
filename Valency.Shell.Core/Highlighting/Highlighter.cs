@@ -1,6 +1,7 @@
-namespace Valency.Shell;
+using Valency.Shell.Core.Builtins;
+using Valency.Shell.Core.Resolution;
 
-public readonly record struct HighlightSpan(int Start, int Length, ConsoleColor Color);
+namespace Valency.Shell.Core.Highlighting;
 
 public sealed class Highlighter
 {
@@ -10,7 +11,7 @@ public sealed class Highlighter
     public Highlighter(Func<string, bool>? isCommandValid = null)
     {
         _isCommandValid = isCommandValid ??
-            (name => BuiltinCommands.IsBuiltin(name) || PathResolver.Resolve(name) is not null);
+            (name => BuiltinNames.IsBuiltin(name) || PathResolver.Resolve(name) is not null);
     }
 
     public IReadOnlyList<HighlightSpan> Highlight(string text)
@@ -22,6 +23,7 @@ public sealed class Highlighter
         PaintCommand(text, colors);
         PaintStrings(text, colors);
         PaintVariables(text, colors);
+        PaintSeparators(text, colors);
         return ToSpans(colors);
     }
 
@@ -60,6 +62,46 @@ public sealed class Highlighter
         }
         if (inQuotes)
             Paint(colors, start, text.Length, quoteChar == '"' ? ConsoleColor.Yellow : ConsoleColor.DarkYellow);
+    }
+
+    private static void PaintSeparators(string text, ConsoleColor?[] colors)
+    {
+        var inQuotes = false;
+        var quoteChar = '"';
+        for (var i = 0; i < text.Length; i++)
+        {
+            var ch = text[i];
+            if (ch is '"' or '\'')
+            {
+                if (!inQuotes)
+                {
+                    inQuotes = true;
+                    quoteChar = ch;
+                }
+                else if (ch == quoteChar)
+                {
+                    inQuotes = false;
+                }
+                continue;
+            }
+            if (inQuotes)
+                continue;
+
+            if (ch == ';')
+            {
+                colors[i] = ConsoleColor.DarkCyan;
+            }
+            else if ((ch == '&' || ch == '|') && i + 1 < text.Length && text[i + 1] == ch)
+            {
+                colors[i] = ConsoleColor.DarkCyan;
+                colors[i + 1] = ConsoleColor.DarkCyan;
+                i++;
+            }
+            else if (ch == '&' || ch == '|')
+            {
+                colors[i] = ConsoleColor.DarkCyan;
+            }
+        }
     }
 
     private static void PaintVariables(string text, ConsoleColor?[] colors)

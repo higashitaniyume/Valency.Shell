@@ -1,6 +1,7 @@
 using System.Text;
+using Valency.Shell.Core.Highlighting;
 
-namespace Valency.Shell;
+namespace Valency.Shell.Editing;
 
 public enum LineResultKind
 {

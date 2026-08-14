@@ -1,20 +1,7 @@
 using System.Text;
+using Valency.Shell.Core.Syntax;
 
-namespace Valency.Shell;
-
-public interface IVariableSource
-{
-    bool TryGet(string name, out string? value);
-}
-
-public sealed class EnvironmentVariableSource : IVariableSource
-{
-    public bool TryGet(string name, out string? value)
-    {
-        value = Environment.GetEnvironmentVariable(name);
-        return value is not null;
-    }
-}
+namespace Valency.Shell.Core.Expansion;
 
 public sealed class VariableExpander
 {

@@ -82,6 +82,22 @@ public class HighlighterTests
     }
 
     [Fact]
+    public void Highlight_Separators_AreDarkCyan()
+    {
+        var spans = Create("echo").Highlight("a && b || c; d");
+        Assert.Contains(spans, s => s.Start == 2 && s.Length == 2 && s.Color == ConsoleColor.DarkCyan);
+        Assert.Contains(spans, s => s.Start == 7 && s.Length == 2 && s.Color == ConsoleColor.DarkCyan);
+        Assert.Contains(spans, s => s.Start == 11 && s.Length == 1 && s.Color == ConsoleColor.DarkCyan);
+    }
+
+    [Fact]
+    public void Highlight_SeparatorInsideQuotes_NotHighlighted()
+    {
+        var spans = Create("echo").Highlight("echo \"a;b\"");
+        Assert.DoesNotContain(spans, s => s.Color == ConsoleColor.DarkCyan);
+    }
+
+    [Fact]
     public void Highlight_EscapedDollar_NotHighlighted()
     {
         var spans = Create("echo").Highlight("echo \\$PATH");

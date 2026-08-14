@@ -1,4 +1,4 @@
-namespace Valency.Shell;
+namespace Valency.Shell.Core.Resolution;
 
 public static class PathResolver
 {

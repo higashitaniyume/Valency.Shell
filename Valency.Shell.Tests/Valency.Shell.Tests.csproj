@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Valency.Shell\Valency.Shell.csproj" />
+    <ProjectReference Include="..\Valency.Shell.Core\Valency.Shell.Core.csproj" />
+    <ProjectReference Include="..\Valency.Shell.Engine\Valency.Shell.Engine.csproj" />
   </ItemGroup>
 
 </Project>

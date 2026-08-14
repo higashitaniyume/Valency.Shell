@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Valency.Shell;
+namespace Valency.Shell.Core.Syntax;
 
 public readonly record struct TokenSegment(string Text, bool Expand);
 
