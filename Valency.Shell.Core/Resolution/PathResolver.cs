@@ -2,16 +2,18 @@ namespace Valency.Shell.Core.Resolution;
 
 public static class PathResolver
 {
-    public static string? Resolve(string command)
+    public static string? Resolve(string command, string? baseDirectory = null)
     {
-        return Resolve(command, IsExecutable);
+        return Resolve(command, IsExecutable, baseDirectory);
     }
 
-    public static string? Resolve(string command, Func<string, bool> isExecutable)
+    public static string? Resolve(string command, Func<string, bool> isExecutable, string? baseDirectory = null)
     {
+        var baseDir = baseDirectory ?? Environment.CurrentDirectory;
+
         if (command.Contains(Path.DirectorySeparatorChar) || command.Contains(Path.AltDirectorySeparatorChar))
         {
-            var full = Path.GetFullPath(command, Environment.CurrentDirectory);
+            var full = Path.GetFullPath(command, baseDir);
             return isExecutable(full) ? full : null;
         }
 
@@ -31,7 +33,7 @@ public static class PathResolver
             candidates = [command];
         }
 
-        var searchDirs = new[] { Environment.CurrentDirectory }
+        var searchDirs = new[] { baseDir }
             .Concat((Environment.GetEnvironmentVariable("PATH") ?? "")
                 .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries));
 
