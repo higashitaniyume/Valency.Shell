@@ -17,20 +17,21 @@ public sealed class CdCommand : IBuiltinCommand
         var target = path switch
         {
             null => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "-" => context.PreviousDirectory ?? Environment.CurrentDirectory,
+            "-" => context.PreviousDirectory ?? context.CurrentDirectory,
             _ => path,
         };
 
         try
         {
-            var full = Path.GetFullPath(target, Environment.CurrentDirectory);
+            var full = Path.GetFullPath(target, context.CurrentDirectory);
             if (!Directory.Exists(full))
             {
                 Console.Error.WriteLine($"cd: 路径不存在: {target}");
                 return 1;
             }
 
-            context.PreviousDirectory = Environment.CurrentDirectory;
+            context.PreviousDirectory = context.CurrentDirectory;
+            context.CurrentDirectory = full;
             Environment.CurrentDirectory = full;
             return 0;
         }

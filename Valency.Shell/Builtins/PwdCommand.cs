@@ -12,7 +12,7 @@ public sealed class PwdCommand : IBuiltinCommand
 
     public int Execute(ParseResult args, IShellContext context)
     {
-        Console.Out.WriteLine(Environment.CurrentDirectory);
+        Console.Out.WriteLine(context.CurrentDirectory);
         return 0;
     }
 }

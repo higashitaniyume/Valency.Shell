@@ -1,6 +1,7 @@
 ﻿using Serilog;
 using Valency.Shell;
 using Valency.Shell.Builtins;
+using Valency.Shell.Core.Builtins;
 using Valency.Shell.Logging;
 using Valency.Shell.Platform;
 using Valency.Shell.Prompting;
@@ -22,20 +23,45 @@ try
     var promptSettings = LoadPromptSettings();
     var promptFormatter = new PromptFormatter();
 
-    var help = new HelpCommand();
-    var builtins = new BuiltinRegistry(
-        new ExitCommand(),
-        new CdCommand(),
-        new PwdCommand(),
-        new JobsCommand(),
-        new LogsCommand(logFilePath, ShellLogging.GetUdpPort()),
-        new PromptCommand(promptSettings),
-        new GrepCommand(),
-        help);
-    help.Registry = builtins;
+    var builtins = BuiltinCommands.CreateDefault(logFilePath, ShellLogging.GetUdpPort(), promptSettings);
 
     var shell = new Shell(builtins, Log.Logger, promptFormatter, promptSettings);
-    exitCode = shell.Run();
+
+    if (args.Length > 0 && args[0] == "-c")
+    {
+        if (args.Length < 2)
+        {
+            Console.Error.WriteLine("用法: valency -c <命令>");
+            return 2;
+        }
+
+        shell.ScriptName = args.Length > 2 ? args[2] : "valency";
+        shell.PositionalArgs = args.Skip(3).ToArray();
+        exitCode = shell.ExecuteLine(args[1]);
+    }
+    else if (args.Length > 0)
+    {
+        var scriptPath = args[0];
+        shell.ScriptName = scriptPath;
+        shell.PositionalArgs = args.Skip(1).ToArray();
+
+        if (!File.Exists(scriptPath))
+        {
+            Console.Error.WriteLine($"valency: 脚本文件不存在: {scriptPath}");
+            return 127;
+        }
+
+        using var reader = new StreamReader(scriptPath);
+        exitCode = shell.RunScript(reader);
+    }
+    else if (Console.IsInputRedirected)
+    {
+        exitCode = shell.RunScript(Console.In);
+    }
+    else
+    {
+        exitCode = shell.Run();
+    }
 }
 finally
 {

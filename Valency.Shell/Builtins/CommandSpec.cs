@@ -6,6 +6,7 @@ public sealed class CommandSpec
     public required string Summary { get; init; }
     public IReadOnlyList<OptionSpec> Options { get; init; } = [];
     public IReadOnlyList<string> Positionals { get; init; } = [];
+    public bool RawArgs { get; init; }
 
     public OptionSpec? FindOption(string token)
     {

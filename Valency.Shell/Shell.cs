@@ -2,11 +2,13 @@ using System.Diagnostics;
 using Serilog;
 using Valency.Shell.Builtins;
 using Valency.Shell.Core.Completion;
-using Valency.Shell.Core.Expansion;
-using Valency.Shell.Core.Syntax;
 using Valency.Shell.Editing;
 using Valency.Shell.Engine;
 using Valency.Shell.Prompting;
+using Valency.Shell.Scripting.Ast;
+using Valency.Shell.Scripting.Eval;
+using Valency.Shell.Scripting.Lexing;
+using Valency.Shell.Scripting.Parsing;
 
 namespace Valency.Shell;
 
@@ -21,10 +23,11 @@ public sealed class JobEventArgs(BackgroundJob job) : EventArgs
     public BackgroundJob Job { get; } = job;
 }
 
-public sealed class Shell : IShellContext
+public sealed class Shell : IShellContext, IShellRuntime
 {
     private readonly LineEditor _editor;
-    private readonly VariableExpander _expander;
+    private readonly ShellState _state = new();
+    private readonly Interpreter _interpreter;
     private readonly BuiltinRegistry _builtins;
     private readonly ILogger _logger;
     private readonly PromptFormatter _promptFormatter;
@@ -32,12 +35,8 @@ public sealed class Shell : IShellContext
     private readonly List<BackgroundJob> _jobs = new();
     private readonly List<Process> _foreground = new();
     private int _nextJobId = 1;
-    private bool _exitRequested;
-    private int _requestedExitCode;
     private TextReader? _pipelineInput;
 
-    public int LastExitCode { get; set; }
-    public string? PreviousDirectory { get; set; }
     public bool IsRunning { get; private set; }
 
     public event EventHandler<CommandCompletedEventArgs>? CommandCompleted;
@@ -50,37 +49,22 @@ public sealed class Shell : IShellContext
         _logger = logger.ForContext<Shell>();
         _promptFormatter = promptFormatter;
         _promptSettings = promptSettings;
-        _expander = new VariableExpander(new ShellVariableSource(this));
+        _interpreter = new Interpreter(this, _state);
         _editor = new LineEditor(new CompletionEngine(builtins.Commands.Select(c => c.Spec.Name)));
         Console.CancelKeyPress += OnCancelKeyPress;
     }
 
-    private sealed class ShellVariableSource(Shell shell) : IVariableSource
+    public string ScriptName
     {
-        public bool TryGet(string name, out string? value)
-        {
-            if (name == "?")
-            {
-                value = shell.LastExitCode.ToString();
-                return true;
-            }
-            value = Environment.GetEnvironmentVariable(name);
-            return value is not null;
-        }
+        get => _state.ScriptName;
+        set => _state.ScriptName = value;
     }
 
-    bool IShellContext.ExitRequested => _exitRequested;
-    int IShellContext.RequestedExitCode => _requestedExitCode;
-
-    TextReader? IShellContext.PipelineInput => _pipelineInput;
-
-    void IShellContext.RequestExit(int exitCode)
+    public IReadOnlyList<string> PositionalArgs
     {
-        _requestedExitCode = exitCode;
-        _exitRequested = true;
+        get => _state.PositionalArgs;
+        set => _state.PositionalArgs = value;
     }
-
-    void IShellContext.PrintJobs() => ListJobs();
 
     private void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
@@ -113,88 +97,16 @@ public sealed class Shell : IShellContext
 
                 var result = _editor.ReadLine(_promptSettings.Build(_promptFormatter));
                 if (result.Kind == LineResultKind.Exit)
-                    return LastExitCode;
+                    return _state.LastExitCode;
                 if (result.Kind == LineResultKind.Cancelled)
                 {
-                    LastExitCode = 1;
+                    _state.LastExitCode = 1;
                     continue;
                 }
 
-                List<ParsedCommand> parsed;
-                try
-                {
-                    parsed = LineParser.Parse(result.Text);
-                }
-                catch (FormatException ex)
-                {
-                    Console.Error.WriteLine(ex.Message);
-                    _logger.Error(ex, "解析失败: {Line}", result.Text);
-                    LastExitCode = 2;
-                    continue;
-                }
-
-                _logger.Debug(
-                    "解析行: {Line} → {Count} 个命令 [{Commands}]",
-                    result.Text,
-                    parsed.Count,
-                    string.Join(", ", parsed.Select(p => $"{p.RawText}({p.Connector})")));
-
-                var runNext = true;
-                var i = 0;
-                while (i < parsed.Count)
-                {
-                    var group = new List<string[]>();
-                    var groupRaw = new List<string>();
-                    var connector = parsed[i].Connector;
-                    group.Add(ExpandCommand(parsed[i].RawText));
-                    groupRaw.Add(parsed[i].RawText);
-
-                    while (connector == Connector.Pipe && i + 1 < parsed.Count)
-                    {
-                        i++;
-                        connector = parsed[i].Connector;
-                        group.Add(ExpandCommand(parsed[i].RawText));
-                        groupRaw.Add(parsed[i].RawText);
-                    }
-
-                    if (connector == Connector.Pipe)
-                    {
-                        Console.Error.WriteLine("管道 '|' 后缺少命令");
-                        LastExitCode = 2;
-                        break;
-                    }
-
-                    i++;
-                    var rawCommand = string.Join(" | ", groupRaw);
-                    var background = connector == Connector.Background && group.Count == 1;
-                    var effective = connector == Connector.Background ? Connector.Semicolon : connector;
-
-                    if (runNext)
-                    {
-                        if (background)
-                        {
-                            StartBackground(group[0]);
-                            runNext = RunNext(executed: true, effective, 0);
-                        }
-                        else
-                        {
-                            var stopwatch = Stopwatch.StartNew();
-                            var code = ExecuteGroup(group, out var exitSignal);
-                            stopwatch.Stop();
-                            _logger.Information(
-                                "命令完成 {Command} 退出码 {ExitCode} 耗时 {ElapsedMs}ms",
-                                rawCommand, LastExitCode, stopwatch.ElapsedMilliseconds);
-                            CommandCompleted?.Invoke(this, new CommandCompletedEventArgs(rawCommand, LastExitCode));
-                            if (exitSignal)
-                                return LastExitCode;
-                            runNext = RunNext(executed: true, effective, code);
-                        }
-                    }
-                    else
-                    {
-                        runNext = RunNext(executed: false, effective, 0);
-                    }
-                }
+                ExecuteLine(result.Text);
+                if (_state.ExitRequested)
+                    return _state.ExitCode;
             }
         }
         finally
@@ -203,135 +115,235 @@ public sealed class Shell : IShellContext
         }
     }
 
-    public static bool RunNext(bool executed, Connector connector, int code)
+    public int RunScript(TextReader reader)
     {
-        if (!executed)
-            return connector switch
-            {
-                Connector.And => false,
-                Connector.Or => true,
-                _ => true,
-            };
-
-        return connector switch
-        {
-            Connector.And => code == 0,
-            Connector.Or => code != 0,
-            _ => true,
-        };
-    }
-
-    private string[] ExpandCommand(string rawText)
-    {
-        var expanded = CommandParser.SplitTokens(rawText)
-            .Select(t => _expander.Expand(t))
-            .ToArray();
-        _logger.Debug("命令展开: {Raw} → [{Expanded}]", rawText, string.Join(", ", expanded));
-        return expanded;
-    }
-
-    private int ExecuteGroup(IReadOnlyList<string[]> commands, out bool exitSignal)
-    {
-        exitSignal = false;
-
-        if (commands.Count == 1)
-            return ExecuteSingle(commands[0], out exitSignal);
-
-        var lastIsBuiltin = _builtins.TryGet(commands[^1][0], out var lastBuiltin);
-
-        if (!lastIsBuiltin)
-        {
-            foreach (var command in commands)
-            {
-                if (_builtins.TryGet(command[0], out _))
-                {
-                    Console.Error.WriteLine("内置命令只能作为管道的最后一个命令");
-                    return 2;
-                }
-            }
-
-            LastExitCode = ProcessRunner.RunPipeline(commands, _foreground, _logger);
-            return LastExitCode;
-        }
-
-        var external = commands.Take(commands.Count - 1).ToArray();
-        var captured = ProcessRunner.RunPipelineCaptured(external, _foreground, _logger, out var pipelineExit);
-        LastExitCode = pipelineExit;
-
-        var last = commands[^1];
-        _pipelineInput = new StringReader(captured);
+        IsRunning = true;
         try
         {
-            return ExecuteBuiltin(lastBuiltin, last, out exitSignal);
+            return ExecuteScript(reader.ReadToEnd());
         }
         finally
         {
-            _pipelineInput = null;
+            IsRunning = false;
         }
     }
 
-    private int ExecuteSingle(string[] args, out bool exitSignal)
+    public int ExecuteLine(string line)
     {
-        exitSignal = false;
+        if (string.IsNullOrWhiteSpace(line))
+            return _state.LastExitCode;
 
-        if (_builtins.TryGet(args[0], out var builtin))
-            return ExecuteBuiltin(builtin, args, out exitSignal);
-
-        LastExitCode = ProcessRunner.Run(args[0], args.Skip(1).ToArray(), _logger);
-        return LastExitCode;
-    }
-
-    private int ExecuteBuiltin(IBuiltinCommand builtin, string[] args, out bool exitSignal)
-    {
-        exitSignal = false;
-
-        var parseResult = ArgParser.Parse(args.Skip(1).ToArray(), builtin.Spec, out var error);
-        if (parseResult is null)
-        {
-            Console.Error.WriteLine($"{args[0]}: {error}");
-            LastExitCode = 2;
-            return 2;
-        }
-
-        if (parseResult.HelpRequested)
-        {
-            HelpRenderer.PrintCommand(builtin.Spec);
-            LastExitCode = 0;
-            return 0;
-        }
-
-        var code = builtin.Execute(parseResult, this);
-        if (_exitRequested)
-        {
-            exitSignal = true;
-            LastExitCode = _requestedExitCode;
-            return LastExitCode;
-        }
-
-        LastExitCode = code;
+        var code = ExecuteScript(line);
+        CommandCompleted?.Invoke(this, new CommandCompletedEventArgs(line, code));
         return code;
     }
 
-    private void StartBackground(string[] args)
+    private int ExecuteScript(string text)
     {
-        if (_builtins.TryGet(args[0], out _))
+        try
         {
-            ExecuteSingle(args, out _);
-            return;
+            return _interpreter.Execute(text);
+        }
+        catch (SyntaxError ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            _logger.Error(ex, "解析失败: {Text}", text);
+            _state.LastExitCode = 2;
+            return 2;
+        }
+        catch (IncompleteInputException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            _state.LastExitCode = 2;
+            return 2;
+        }
+    }
+
+    // ---- IShellRuntime ----
+
+    public int ExecuteSimpleCommand(IReadOnlyList<string> argv, IReadOnlyList<ResolvedRedirection> redirects)
+    {
+        if (argv.Count == 0)
+            return 0;
+
+        if (_builtins.TryGet(argv[0], out var builtin))
+            return ExecuteBuiltin(builtin, argv);
+
+        var specs = TranslateRedirects(redirects);
+        var code = ProcessRunner.Run(argv[0], argv.Skip(1).ToArray(), specs, _state.CurrentDirectory, _logger);
+        _state.LastExitCode = code;
+        return code;
+    }
+
+    public int ExecutePipeline(IReadOnlyList<PipelineStage> stages)
+    {
+        if (stages.Count == 1)
+            return ExecuteSimpleCommand(stages[0].Argv, stages[0].Redirects);
+
+        if (_builtins.TryGet(stages[^1].Argv[0], out var lastBuiltin))
+        {
+            var external = stages.Take(stages.Count - 1)
+                .Select(s => s.Argv.ToArray())
+                .ToArray();
+            var captured = ProcessRunner.RunPipelineCaptured(
+                external, _foreground, _logger, out var pipelineExit, _state.CurrentDirectory);
+            _state.LastExitCode = pipelineExit;
+            _pipelineInput = new StringReader(captured);
+            try
+            {
+                return ExecuteBuiltin(lastBuiltin, stages[^1].Argv);
+            }
+            finally
+            {
+                _pipelineInput = null;
+            }
         }
 
-        var job = ProcessRunner.StartBackground(args[0], args.Skip(1).ToArray(), _logger);
+        var commands = stages.Select(s => s.Argv.ToArray()).ToArray();
+        var redirectSpecs = new List<RedirectSpec>();
+        foreach (var r in stages[0].Redirects)
+            redirectSpecs.AddRange(TranslateOne(r));
+        foreach (var r in stages[^1].Redirects)
+            redirectSpecs.AddRange(TranslateOne(r));
+
+        var code = ProcessRunner.RunPipeline(commands, _foreground, redirectSpecs, _state.CurrentDirectory, _logger);
+        _state.LastExitCode = code;
+        return code;
+    }
+
+    public int ExecuteBackground(IReadOnlyList<string> argv)
+    {
+        if (argv.Count == 0)
+            return 0;
+
+        if (_builtins.TryGet(argv[0], out var builtin))
+            return ExecuteBuiltin(builtin, argv);
+
+        var job = ProcessRunner.StartBackground(argv[0], argv.Skip(1).ToArray(), _logger, _state.CurrentDirectory);
         if (job is null)
         {
-            LastExitCode = 127;
-            return;
+            _state.LastExitCode = 127;
+            return 127;
         }
 
         job.Id = _nextJobId++;
+        _state.LastBackgroundPid = job.Process.Id;
         _jobs.Add(job);
         Console.Out.WriteLine($"[{job.Id}] {job.Process.Id}");
         _logger.Information("作业启动 [{JobId}] {Command} (PID {Pid})", job.Id, job.Command, job.Process.Id);
         JobStarted?.Invoke(this, new JobEventArgs(job));
+        return 0;
+    }
+
+    private int ExecuteBuiltin(IBuiltinCommand builtin, IReadOnlyList<string> argv)
+    {
+        ParseResult? parseResult;
+        if (builtin.Spec.RawArgs)
+        {
+            parseResult = new ParseResult();
+            foreach (var arg in argv.Skip(1))
+                parseResult.Positionals.Add(arg);
+        }
+        else
+        {
+            parseResult = ArgParser.Parse(argv.Skip(1).ToArray(), builtin.Spec, out var error);
+            if (parseResult is null)
+            {
+                Console.Error.WriteLine($"{argv[0]}: {error}");
+                _state.LastExitCode = 2;
+                return 2;
+            }
+
+            if (parseResult.HelpRequested)
+            {
+                HelpRenderer.PrintCommand(builtin.Spec);
+                _state.LastExitCode = 0;
+                return 0;
+            }
+        }
+
+        var code = builtin.Execute(parseResult, this);
+        _state.LastExitCode = code;
+        return code;
+    }
+
+    private static IReadOnlyList<RedirectSpec> TranslateRedirects(IReadOnlyList<ResolvedRedirection> redirects)
+    {
+        var list = new List<RedirectSpec>();
+        foreach (var redirect in redirects)
+            list.AddRange(TranslateOne(redirect));
+        return list;
+    }
+
+    private static IReadOnlyList<RedirectSpec> TranslateOne(ResolvedRedirection redirect)
+    {
+        return redirect.Kind switch
+        {
+            RedirectionKind.Input => [new RedirectSpec(redirect.Fd, RedirectKind.Input, redirect.Target)],
+            RedirectionKind.Output => [new RedirectSpec(redirect.Fd, RedirectKind.Output, redirect.Target)],
+            RedirectionKind.Append => [new RedirectSpec(redirect.Fd, RedirectKind.Append, redirect.Target)],
+            RedirectionKind.DupOutput => [new RedirectSpec(redirect.Fd, RedirectKind.DupOutput, redirect.Target)],
+            RedirectionKind.AndOutput =>
+            [
+                new RedirectSpec(1, RedirectKind.Output, redirect.Target),
+                new RedirectSpec(2, RedirectKind.Output, redirect.Target),
+            ],
+            RedirectionKind.AndAppend =>
+            [
+                new RedirectSpec(1, RedirectKind.Append, redirect.Target),
+                new RedirectSpec(2, RedirectKind.Append, redirect.Target),
+            ],
+            _ => [],
+        };
+    }
+
+    // ---- IShellContext ----
+
+    public int LastExitCode
+    {
+        get => _state.LastExitCode;
+        set => _state.LastExitCode = value;
+    }
+
+    public string? PreviousDirectory { get; set; }
+
+    public string CurrentDirectory
+    {
+        get => _state.CurrentDirectory;
+        set => _state.CurrentDirectory = value;
+    }
+
+    public bool ExitRequested => _state.ExitRequested;
+    public int RequestedExitCode => _state.ExitCode;
+    public void RequestExit(int exitCode) => _state.ExitCode = exitCode;
+
+    public void PrintJobs() => ListJobs();
+
+    public TextReader? PipelineInput => _pipelineInput;
+
+    public string? GetVariable(string name) => _state.GetVariable(name);
+
+    public void SetVariable(string name, string value, bool exported) => _state.SetVariable(name, value, exported);
+
+    public void ExportVariable(string name) => _state.ExportVariable(name);
+
+    public void UnsetVariable(string name) => _state.UnsetVariable(name);
+
+    public void ShiftArguments(int count)
+    {
+        var skip = Math.Min(count, _state.PositionalArgs.Count);
+        _state.PositionalArgs = _state.PositionalArgs.Skip(skip).ToArray();
+    }
+
+    public int RunScriptFile(string path)
+    {
+        var full = Path.GetFullPath(path, _state.CurrentDirectory);
+        if (!File.Exists(full))
+        {
+            Console.Error.WriteLine($"source: 文件不存在: {path}");
+            return 1;
+        }
+        return ExecuteScript(File.ReadAllText(full));
     }
 
     private void ReapJobs()

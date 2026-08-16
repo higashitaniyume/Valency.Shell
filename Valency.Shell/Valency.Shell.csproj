@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Valency.Shell.Core\Valency.Shell.Core.csproj" />
+    <ProjectReference Include="..\Valency.Shell.Scripting\Valency.Shell.Scripting.csproj" />
     <ProjectReference Include="..\Valency.Shell.Engine\Valency.Shell.Engine.csproj" />
     <ProjectReference Include="..\Valency.Shell.LogViewer\Valency.Shell.LogViewer.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>

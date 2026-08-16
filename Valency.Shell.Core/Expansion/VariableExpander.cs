@@ -1,5 +1,4 @@
 using System.Text;
-using Valency.Shell.Core.Syntax;
 
 namespace Valency.Shell.Core.Expansion;
 
@@ -10,14 +9,6 @@ public sealed class VariableExpander
     public VariableExpander(IVariableSource? source = null)
     {
         _source = source ?? new EnvironmentVariableSource();
-    }
-
-    public string Expand(Token token)
-    {
-        var text = token.Expandable
-            ? string.Concat(token.Segments.Select(s => s.Expand ? ExpandText(s.Text) : s.Text))
-            : token.Text;
-        return ExpandTilde(text, token.Expandable);
     }
 
     public string ExpandText(string text)
@@ -52,9 +43,14 @@ public sealed class VariableExpander
                 sb.Append(Lookup(text[(i + 2)..end]));
                 i = end;
             }
-            else if (next == '?')
+            else if (next == '?' || next == '#' || next == '@' || next == '*' || next == '$' || next == '!')
             {
-                sb.Append(Lookup("?"));
+                sb.Append(Lookup(next.ToString()));
+                i++;
+            }
+            else if (char.IsDigit(next))
+            {
+                sb.Append(Lookup(next.ToString()));
                 i++;
             }
             else if (MatchEnvPrefix(text, i + 1))
