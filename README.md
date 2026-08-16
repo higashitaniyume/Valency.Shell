@@ -185,6 +185,7 @@ cmd < file              # 从文件读 stdin
 | `VALENCY_PROMPT_FORMAT` | 自定义提示符模板 | — |
 | `VALENCY_LOG_DIR` | 日志目录 | `~/.valency/logs` |
 | `VALENCY_LOG_PORT` | UDP 实时日志端口 | `7310` |
+| `VALENCY_LOG_LEVEL` | 日志级别，`verbose` 时输出 token/语句级详情（文件与 UDP 实时都可见） | `debug` |
 
 自定义提示符模板使用 `$变量` 语法：`$USER`（用户名）、`$HOST` / `$HOSTNAME`（主机名）、`$PWD`（当前目录，用户目录缩写为 `~`）、`$SHARP`（权限符 `#`/`$`）、`$CONN`（连接符 `@`），其余按环境变量展开。例如：
 
@@ -194,9 +195,10 @@ export VALENCY_PROMPT_FORMAT='[$USER@$PWD] '
 
 ## 日志
 
-每次启动生成 `~/.valency/logs/session-<时间戳>.log`，10MB 滚动、保留 5 个，内容按级别记录（文件记 Debug 全量，UDP 实时只记 Info 关键事件）。
+每次启动生成 `~/.valency/logs/session-<时间戳>.log`，10MB 滚动、保留 5 个，内容按级别记录（文件记 Debug 全量，UDP 实时只记 Info 关键事件）。设置 `VALENCY_LOG_LEVEL=verbose` 后，文件与 UDP 实时都会记录 token/语句级 Verbose 日志，可用日志查看器实时查看。
 
 - `logs`：查看当前会话日志
+- `logs --level verbose|debug|info|warn|error|fatal`：按级别筛选
 - `logs --follow`：在独立窗口实时跟随（UDP）
 - 日志查看器：`Valency.Shell.LogViewer --udp [port]` 或 `--file <path>`
 

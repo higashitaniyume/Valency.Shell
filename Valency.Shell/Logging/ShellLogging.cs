@@ -37,6 +37,7 @@ public static class ShellLogging
     {
         var port = GetUdpPort();
         var minLevel = GetLogLevel();
+        var udpLevel = minLevel == LogEventLevel.Verbose ? LogEventLevel.Verbose : LogEventLevel.Information;
 
         return new LoggerConfiguration()
             .MinimumLevel.Is(minLevel)
@@ -51,7 +52,7 @@ public static class ShellLogging
                 "127.0.0.1",
                 port,
                 family: AddressFamily.InterNetwork,
-                restrictedToMinimumLevel: LogEventLevel.Information,
+                restrictedToMinimumLevel: udpLevel,
                 outputTemplate: OutputTemplate)
             .CreateLogger();
     }
