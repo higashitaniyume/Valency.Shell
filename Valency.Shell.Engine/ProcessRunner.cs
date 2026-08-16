@@ -4,11 +4,26 @@ using Valency.Shell.Core.Resolution;
 
 namespace Valency.Shell.Engine;
 
+public enum RedirectKind
+{
+    Input,
+    Output,
+    Append,
+    DupOutput,
+}
+
+public readonly record struct RedirectSpec(int Fd, RedirectKind Kind, string Target);
+
 public static class ProcessRunner
 {
-    public static int Run(string command, IReadOnlyList<string> arguments, ILogger? logger = null)
+    public static int Run(
+        string command,
+        IReadOnlyList<string> arguments,
+        IReadOnlyList<RedirectSpec>? redirects = null,
+        string? workingDirectory = null,
+        ILogger? logger = null)
     {
-        var resolved = PathResolver.Resolve(command);
+        var resolved = PathResolver.Resolve(command, workingDirectory);
         if (resolved is null)
         {
             Console.Error.WriteLine($"'{command}' 不是可识别的命令或可执行文件");
@@ -18,14 +33,17 @@ public static class ProcessRunner
 
         try
         {
-            using var process = Process.Start(CreateStartInfo(resolved, arguments));
+            using var process = Process.Start(CreateStartInfo(resolved, arguments, redirects, workingDirectory));
             if (process is null)
             {
                 Console.Error.WriteLine($"无法启动进程: {command}");
                 return 1;
             }
 
+            var pumps = PumpRedirects(process, redirects);
             process.WaitForExit();
+            foreach (var task in pumps)
+                task.Wait();
             return process.ExitCode;
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
@@ -35,7 +53,12 @@ public static class ProcessRunner
         }
     }
 
-    public static int RunPipeline(IReadOnlyList<string[]> commands, IList<Process>? foreground = null, ILogger? logger = null)
+    public static int RunPipeline(
+        IReadOnlyList<string[]> commands,
+        IList<Process>? foreground = null,
+        IReadOnlyList<RedirectSpec>? redirects = null,
+        string? workingDirectory = null,
+        ILogger? logger = null)
     {
         var processes = new List<Process>();
 
@@ -45,7 +68,7 @@ public static class ProcessRunner
             {
                 var name = commands[i][0];
                 var args = commands[i].Skip(1).ToArray();
-                var resolved = PathResolver.Resolve(name);
+                var resolved = PathResolver.Resolve(name, workingDirectory);
                 if (resolved is null)
                 {
                     Console.Error.WriteLine($"'{name}' 不是可识别的命令或可执行文件");
@@ -53,7 +76,8 @@ public static class ProcessRunner
                 }
                 logger?.Debug("PATH 解析: {Command} → {Path}", name, resolved);
 
-                var startInfo = CreateStartInfo(resolved, args);
+                var stageRedirects = StageRedirects(redirects, i, commands.Count);
+                var startInfo = CreateStartInfo(resolved, args, stageRedirects, workingDirectory);
                 if (i > 0) startInfo.RedirectStandardInput = true;
                 if (i < commands.Count - 1) startInfo.RedirectStandardOutput = true;
 
@@ -76,8 +100,13 @@ public static class ProcessRunner
                 bridges.Add(BridgeAsync(left.StandardOutput, right.StandardInput));
             }
 
+            var stagePumps = PumpStageRedirects(processes, redirects);
+
             foreach (var process in processes)
                 process.WaitForExit();
+
+            foreach (var task in stagePumps)
+                task.Wait();
 
             return processes[^1].ExitCode;
         }
@@ -108,7 +137,8 @@ public static class ProcessRunner
         IReadOnlyList<string[]> commands,
         IList<Process>? foreground,
         ILogger? logger,
-        out int exitCode)
+        out int exitCode,
+        string? workingDirectory = null)
     {
         var processes = new List<Process>();
         exitCode = 127;
@@ -119,7 +149,7 @@ public static class ProcessRunner
             {
                 var name = commands[i][0];
                 var args = commands[i].Skip(1).ToArray();
-                var resolved = PathResolver.Resolve(name);
+                var resolved = PathResolver.Resolve(name, workingDirectory);
                 if (resolved is null)
                 {
                     Console.Error.WriteLine($"'{name}' 不是可识别的命令或可执行文件");
@@ -127,7 +157,7 @@ public static class ProcessRunner
                 }
                 logger?.Debug("PATH 解析: {Command} → {Path}", name, resolved);
 
-                var startInfo = CreateStartInfo(resolved, args);
+                var startInfo = CreateStartInfo(resolved, args, null, workingDirectory);
                 if (i > 0) startInfo.RedirectStandardInput = true;
                 startInfo.RedirectStandardOutput = true;
 
@@ -178,9 +208,13 @@ public static class ProcessRunner
         }
     }
 
-    public static BackgroundJob? StartBackground(string command, IReadOnlyList<string> arguments, ILogger? logger = null)
+    public static BackgroundJob? StartBackground(
+        string command,
+        IReadOnlyList<string> arguments,
+        ILogger? logger = null,
+        string? workingDirectory = null)
     {
-        var resolved = PathResolver.Resolve(command);
+        var resolved = PathResolver.Resolve(command, workingDirectory);
         if (resolved is null)
         {
             Console.Error.WriteLine($"'{command}' 不是可识别的命令或可执行文件");
@@ -188,7 +222,7 @@ public static class ProcessRunner
         }
         logger?.Debug("PATH 解析: {Command} → {Path}", command, resolved);
 
-        var startInfo = CreateStartInfo(resolved, arguments);
+        var startInfo = CreateStartInfo(resolved, arguments, null, workingDirectory);
         startInfo.RedirectStandardInput = true;
         startInfo.RedirectStandardOutput = true;
         startInfo.RedirectStandardError = true;
@@ -221,6 +255,130 @@ public static class ProcessRunner
         }
     }
 
+    private static IReadOnlyList<RedirectSpec>? StageRedirects(
+        IReadOnlyList<RedirectSpec>? redirects, int index, int total)
+    {
+        if (redirects is null || redirects.Count == 0)
+            return null;
+        return index == 0
+            ? redirects.Where(r => r.Kind == RedirectKind.Input).ToArray()
+            : index == total - 1
+                ? redirects.Where(r => r.Kind != RedirectKind.Input).ToArray()
+                : null;
+    }
+
+    private static IReadOnlyList<Task> PumpStageRedirects(IReadOnlyList<Process> processes, IReadOnlyList<RedirectSpec>? redirects)
+    {
+        if (redirects is null || redirects.Count == 0)
+            return [];
+        var tasks = new List<Task>();
+        AddInputPump(tasks, processes[0], redirects);
+        tasks.AddRange(PumpOutput(processes[^1], redirects));
+        return tasks;
+    }
+
+    private static IReadOnlyList<Task> PumpRedirects(Process process, IReadOnlyList<RedirectSpec>? redirects)
+    {
+        if (redirects is null || redirects.Count == 0)
+            return [];
+        var tasks = new List<Task>();
+        AddInputPump(tasks, process, redirects);
+        tasks.AddRange(PumpOutput(process, redirects));
+        return tasks;
+    }
+
+    private static void AddInputPump(List<Task> tasks, Process process, IReadOnlyList<RedirectSpec> redirects)
+    {
+        RedirectSpec? input = null;
+        foreach (var redirect in redirects)
+        {
+            if (redirect.Kind == RedirectKind.Input && !string.IsNullOrEmpty(redirect.Target))
+            {
+                input = redirect;
+                break;
+            }
+        }
+
+        if (input is not { } spec)
+            return;
+
+        tasks.Add(Task.Run(() =>
+        {
+            try
+            {
+                using var fs = new FileStream(spec.Target, FileMode.Open, FileAccess.Read);
+                fs.CopyTo(process.StandardInput.BaseStream);
+            }
+            catch (Exception)
+            {
+            }
+            finally
+            {
+                try
+                {
+                    process.StandardInput.Close();
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }));
+    }
+
+    private static IReadOnlyList<Task> PumpOutput(Process process, IReadOnlyList<RedirectSpec> redirects)
+    {
+        var stdoutTarget = ResolveStdoutTarget(redirects);
+        var stderrTarget = ResolveStderrTarget(redirects, stdoutTarget);
+
+        var tasks = new List<Task>();
+        if (stdoutTarget is not null)
+            tasks.Add(PumpStream(process.StandardOutput, stdoutTarget.Value));
+        if (stderrTarget is not null)
+            tasks.Add(PumpStream(process.StandardError, stderrTarget.Value));
+        return tasks;
+    }
+
+    private static (string Path, bool Append)? ResolveStdoutTarget(IReadOnlyList<RedirectSpec> redirects)
+    {
+        foreach (var r in redirects)
+        {
+            if (r.Fd == 1 && r.Kind is RedirectKind.Output or RedirectKind.Append)
+                return (r.Target, r.Kind == RedirectKind.Append);
+        }
+        return null;
+    }
+
+    private static (string Path, bool Append)? ResolveStderrTarget(
+        IReadOnlyList<RedirectSpec> redirects, (string Path, bool Append)? stdoutTarget)
+    {
+        foreach (var r in redirects)
+        {
+            if (r.Fd == 2 && r.Kind is RedirectKind.Output or RedirectKind.Append)
+                return (r.Target, r.Kind == RedirectKind.Append);
+            if (r.Fd == 2 && r.Kind == RedirectKind.DupOutput && stdoutTarget is not null)
+                return stdoutTarget;
+        }
+        return null;
+    }
+
+    private static Task PumpStream(StreamReader from, (string Path, bool Append) target)
+    {
+        return Task.Run(() =>
+        {
+            try
+            {
+                using var fs = new FileStream(
+                    target.Path,
+                    target.Append ? FileMode.Append : FileMode.Create,
+                    FileAccess.Write);
+                from.BaseStream.CopyTo(fs);
+            }
+            catch (Exception)
+            {
+            }
+        });
+    }
+
     private static async Task BridgeAsync(StreamReader from, StreamWriter to)
     {
         try
@@ -242,7 +400,11 @@ public static class ProcessRunner
         }
     }
 
-    private static ProcessStartInfo CreateStartInfo(string resolved, IReadOnlyList<string> arguments)
+    private static ProcessStartInfo CreateStartInfo(
+        string resolved,
+        IReadOnlyList<string> arguments,
+        IReadOnlyList<RedirectSpec>? redirects,
+        string? workingDirectory)
     {
         var extension = Path.GetExtension(resolved);
         if (extension.Equals(".bat", StringComparison.OrdinalIgnoreCase) ||
@@ -258,6 +420,7 @@ public static class ProcessRunner
                 FileName = cmd,
                 Arguments = "/c \"" + inner + "\"",
                 UseShellExecute = false,
+                WorkingDirectory = workingDirectory ?? string.Empty,
             };
         }
 
@@ -265,7 +428,19 @@ public static class ProcessRunner
         {
             FileName = resolved,
             UseShellExecute = false,
+            WorkingDirectory = workingDirectory ?? string.Empty,
         };
+
+        if (redirects is not null && redirects.Count > 0)
+        {
+            if (redirects.Any(r => r.Kind == RedirectKind.Input))
+                startInfo.RedirectStandardInput = true;
+            if (redirects.Any(r => r.Kind is RedirectKind.Output or RedirectKind.Append or RedirectKind.DupOutput && r.Fd == 1))
+                startInfo.RedirectStandardOutput = true;
+            if (redirects.Any(r => r.Kind is RedirectKind.Output or RedirectKind.Append && r.Fd == 2))
+                startInfo.RedirectStandardError = true;
+        }
+
         foreach (var arg in arguments)
             startInfo.ArgumentList.Add(arg);
         return startInfo;
