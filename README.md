@@ -35,8 +35,12 @@ dotnet publish Valency.Shell/Valency.Shell.csproj -c Release -r linux-x64 --self
 # 执行脚本文件（剩余参数作为 $1..$n 传入）
 valency script.sh arg1 arg2
 
+# 在 shell 内部直接执行脚本（./ 或路径，.vsh/.sh/.bash/.zsh 可直接跑）
+./demo.vsh arg1
+scripts/build.sh
+
 # 执行单条命令（类似 bash -c）
-valency -c 'for i in 1 2 3; do echo $i; done'
+valency -c 'for ($i = 1; $i <= 3; $i++) { echo $i }'
 
 # 从标准输入读取脚本
 cat script.sh | valency
