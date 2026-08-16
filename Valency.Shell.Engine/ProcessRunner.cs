@@ -23,20 +23,23 @@ public static class ProcessRunner
         string? workingDirectory = null,
         ILogger? logger = null)
     {
+        var log = logger?.ForContext("Src", "proc");
         var resolved = PathResolver.Resolve(command, workingDirectory);
         if (resolved is null)
         {
-            Console.Error.WriteLine($"'{command}' 不是可识别的命令或可执行文件");
+            log?.Error(Resources.LogCommandNotFound, command);
+            Console.Error.WriteLine(string.Format(Resources.CommandNotFound, command));
             return 127;
         }
-        logger?.Debug("PATH 解析: {Command} → {Path}", command, resolved);
+        log?.Debug(Resources.PathResolved, command, resolved);
 
         try
         {
             using var process = Process.Start(CreateStartInfo(resolved, arguments, redirects, workingDirectory));
             if (process is null)
             {
-                Console.Error.WriteLine($"无法启动进程: {command}");
+                log?.Error(Resources.LogCannotStartProcess, command);
+                Console.Error.WriteLine(string.Format(Resources.CannotStartProcess, command));
                 return 1;
             }
 
@@ -48,7 +51,8 @@ public static class ProcessRunner
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            Console.Error.WriteLine($"启动 '{command}' 失败: {ex.Message}");
+            log?.Error(Resources.LogStartFailed, command, ex.Message);
+            Console.Error.WriteLine(string.Format(Resources.StartFailed, command, ex.Message));
             return 1;
         }
     }
@@ -60,6 +64,7 @@ public static class ProcessRunner
         string? workingDirectory = null,
         ILogger? logger = null)
     {
+        var log = logger?.ForContext("Src", "proc");
         var processes = new List<Process>();
 
         try
@@ -71,10 +76,11 @@ public static class ProcessRunner
                 var resolved = PathResolver.Resolve(name, workingDirectory);
                 if (resolved is null)
                 {
-                    Console.Error.WriteLine($"'{name}' 不是可识别的命令或可执行文件");
+                    log?.Error(Resources.LogCommandNotFound, name);
+                    Console.Error.WriteLine(string.Format(Resources.CommandNotFound, name));
                     return 127;
                 }
-                logger?.Debug("PATH 解析: {Command} → {Path}", name, resolved);
+                log?.Debug(Resources.PathResolved, name, resolved);
 
                 var stageRedirects = StageRedirects(redirects, i, commands.Count);
                 var startInfo = CreateStartInfo(resolved, args, stageRedirects, workingDirectory);
@@ -84,10 +90,11 @@ public static class ProcessRunner
                 var process = Process.Start(startInfo);
                 if (process is null)
                 {
-                    Console.Error.WriteLine($"无法启动进程: {name}");
+                    log?.Error(Resources.LogCannotStartProcess, name);
+                    Console.Error.WriteLine(string.Format(Resources.CannotStartProcess, name));
                     return 1;
                 }
-                logger?.Debug("管道启动进程 {Index}: {Command} (PID {Pid})", i, name, process.Id);
+                log?.Debug(Resources.PipelineProcessStarted, i, name, process.Id);
                 processes.Add(process);
                 foreground?.Add(process);
             }
@@ -112,7 +119,8 @@ public static class ProcessRunner
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            Console.Error.WriteLine($"启动管道失败: {ex.Message}");
+            log?.Error(Resources.LogPipelineStartFailed, ex.Message);
+            Console.Error.WriteLine(string.Format(Resources.PipelineStartFailed, ex.Message));
             return 1;
         }
         finally
@@ -140,6 +148,7 @@ public static class ProcessRunner
         out int exitCode,
         string? workingDirectory = null)
     {
+        var log = logger?.ForContext("Src", "proc");
         var processes = new List<Process>();
         exitCode = 127;
 
@@ -152,10 +161,11 @@ public static class ProcessRunner
                 var resolved = PathResolver.Resolve(name, workingDirectory);
                 if (resolved is null)
                 {
-                    Console.Error.WriteLine($"'{name}' 不是可识别的命令或可执行文件");
+                    log?.Error(Resources.LogCommandNotFound, name);
+                    Console.Error.WriteLine(string.Format(Resources.CommandNotFound, name));
                     return string.Empty;
                 }
-                logger?.Debug("PATH 解析: {Command} → {Path}", name, resolved);
+                log?.Debug(Resources.PathResolved, name, resolved);
 
                 var startInfo = CreateStartInfo(resolved, args, null, workingDirectory);
                 if (i > 0) startInfo.RedirectStandardInput = true;
@@ -164,11 +174,12 @@ public static class ProcessRunner
                 var process = Process.Start(startInfo);
                 if (process is null)
                 {
-                    Console.Error.WriteLine($"无法启动进程: {name}");
+                    log?.Error(Resources.LogCannotStartProcess, name);
+                    Console.Error.WriteLine(string.Format(Resources.CannotStartProcess, name));
                     exitCode = 1;
                     return string.Empty;
                 }
-                logger?.Debug("管道启动进程 {Index}: {Command} (PID {Pid})", i, name, process.Id);
+                log?.Debug(Resources.PipelineProcessStarted, i, name, process.Id);
                 processes.Add(process);
                 foreground?.Add(process);
             }
@@ -186,7 +197,8 @@ public static class ProcessRunner
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            Console.Error.WriteLine($"启动管道失败: {ex.Message}");
+            log?.Error(Resources.LogPipelineStartFailed, ex.Message);
+            Console.Error.WriteLine(string.Format(Resources.PipelineStartFailed, ex.Message));
             exitCode = 1;
             return string.Empty;
         }
@@ -214,13 +226,15 @@ public static class ProcessRunner
         ILogger? logger = null,
         string? workingDirectory = null)
     {
+        var log = logger?.ForContext("Src", "proc");
         var resolved = PathResolver.Resolve(command, workingDirectory);
         if (resolved is null)
         {
-            Console.Error.WriteLine($"'{command}' 不是可识别的命令或可执行文件");
+            log?.Error(Resources.LogCommandNotFound, command);
+            Console.Error.WriteLine(string.Format(Resources.CommandNotFound, command));
             return null;
         }
-        logger?.Debug("PATH 解析: {Command} → {Path}", command, resolved);
+        log?.Debug(Resources.PathResolved, command, resolved);
 
         var startInfo = CreateStartInfo(resolved, arguments, null, workingDirectory);
         startInfo.RedirectStandardInput = true;
@@ -232,7 +246,8 @@ public static class ProcessRunner
             var process = Process.Start(startInfo);
             if (process is null)
             {
-                Console.Error.WriteLine($"无法启动进程: {command}");
+                log?.Error(Resources.LogCannotStartProcess, command);
+                Console.Error.WriteLine(string.Format(Resources.CannotStartProcess, command));
                 return null;
             }
 
@@ -250,7 +265,8 @@ public static class ProcessRunner
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            Console.Error.WriteLine($"启动 '{command}' 失败: {ex.Message}");
+            log?.Error(Resources.LogStartFailed, command, ex.Message);
+            Console.Error.WriteLine(string.Format(Resources.StartFailed, command, ex.Message));
             return null;
         }
     }

@@ -12,8 +12,8 @@ Console.CancelKeyPress += (_, e) => e.Cancel = true;
 
 var logFilePath = ShellLogging.CreateLogFilePath(DateTimeOffset.Now);
 Log.Logger = ShellLogging.CreateShellLogger(logFilePath);
-Log.Information(
-    "Valency.Shell 启动 PID={Pid} 日志文件={LogFile} UDP端口={UdpPort}",
+Log.ForContext("Src", "shell").Information(
+    Resources.LogStartup,
     Environment.ProcessId, logFilePath, ShellLogging.GetUdpPort());
 
 var exitCode = 1;
@@ -31,7 +31,7 @@ try
     {
         if (args.Length < 2)
         {
-            Console.Error.WriteLine("用法: valency -c <命令>");
+            Console.Error.WriteLine(Resources.ProgramUsage);
             return 2;
         }
 
@@ -47,7 +47,7 @@ try
 
         if (!File.Exists(scriptPath))
         {
-            Console.Error.WriteLine($"valency: 脚本文件不存在: {scriptPath}");
+            Console.Error.WriteLine(string.Format(Resources.ProgramScriptNotFound, scriptPath));
             return 127;
         }
 
@@ -66,8 +66,8 @@ try
 finally
 {
     stopwatch.Stop();
-    Log.Information(
-        "Valency.Shell 退出 退出码 {ExitCode} 运行时长 {DurationMs}ms",
+    Log.ForContext("Src", "shell").Information(
+        Resources.LogShutdown,
         exitCode, stopwatch.ElapsedMilliseconds);
     Log.CloseAndFlush();
 }

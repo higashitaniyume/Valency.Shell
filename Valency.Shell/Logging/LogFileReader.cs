@@ -41,11 +41,12 @@ public static class LogFileReader
     {
         return level.ToLowerInvariant() switch
         {
-            "debug" or "verbose" or "trace" => 0,
-            "info" or "information" => 1,
-            "warn" or "warning" => 2,
-            "error" => 3,
-            "fatal" or "critical" => 4,
+            "verbose" or "trace" or "vrb" => 0,
+            "debug" => 1,
+            "info" or "information" => 2,
+            "warn" or "warning" => 3,
+            "error" => 4,
+            "fatal" or "critical" => 5,
             _ => -1,
         };
     }
@@ -54,11 +55,12 @@ public static class LogFileReader
     {
         return code switch
         {
-            "VRB" or "DBG" => 0,
-            "INF" => 1,
-            "WRN" => 2,
-            "ERR" => 3,
-            "FTL" => 4,
+            "VRB" => 0,
+            "DBG" => 1,
+            "INF" => 2,
+            "WRN" => 3,
+            "ERR" => 4,
+            "FTL" => 5,
             _ => -1,
         };
     }

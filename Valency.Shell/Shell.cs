@@ -46,10 +46,10 @@ public sealed class Shell : IShellContext, IShellRuntime
     public Shell(BuiltinRegistry builtins, ILogger logger, PromptFormatter promptFormatter, PromptSettings promptSettings)
     {
         _builtins = builtins;
-        _logger = logger.ForContext<Shell>();
+        _logger = logger.ForContext("Src", "shell");
         _promptFormatter = promptFormatter;
         _promptSettings = promptSettings;
-        _interpreter = new Interpreter(this, _state);
+        _interpreter = new Interpreter(this, _state, _logger);
         _editor = new LineEditor(new CompletionEngine(builtins.Commands.Select(c => c.Spec.Name)));
         Console.CancelKeyPress += OnCancelKeyPress;
     }
@@ -69,7 +69,7 @@ public sealed class Shell : IShellContext, IShellRuntime
     private void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
     {
         e.Cancel = true;
-        _logger.Warning("收到 Ctrl+C，中断前台进程");
+        _logger.Warning(Resources.LogCtrlCInterrupted);
         lock (_foreground)
         {
             foreach (var process in _foreground)
@@ -147,7 +147,7 @@ public sealed class Shell : IShellContext, IShellRuntime
         catch (SyntaxError ex)
         {
             Console.Error.WriteLine(ex.Message);
-            _logger.Error(ex, "解析失败: {Text}", text);
+            _logger.Error(ex, Resources.LogParseFailed, text);
             _state.LastExitCode = 2;
             return 2;
         }
@@ -157,9 +157,18 @@ public sealed class Shell : IShellContext, IShellRuntime
             _state.LastExitCode = 2;
             return 2;
         }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine(ex.Message);
+            _logger.Error(ex, Resources.LogExpressionFailed, ex.Message);
+            _state.LastExitCode = 2;
+            return 2;
+        }
     }
 
     // ---- IShellRuntime ----
+
+    private static readonly string[] ScriptExtensions = [".vsh", ".sh", ".bash", ".zsh"];
 
     public int ExecuteSimpleCommand(IReadOnlyList<string> argv, IReadOnlyList<ResolvedRedirection> redirects)
     {
@@ -169,10 +178,74 @@ public sealed class Shell : IShellContext, IShellRuntime
         if (_builtins.TryGet(argv[0], out var builtin))
             return ExecuteBuiltin(builtin, argv);
 
+        if (IsScriptFile(argv[0]))
+        {
+            var scriptCode = ExecuteScriptFile(argv[0], argv);
+            _state.LastExitCode = scriptCode;
+            return scriptCode;
+        }
+
         var specs = TranslateRedirects(redirects);
         var code = ProcessRunner.Run(argv[0], argv.Skip(1).ToArray(), specs, _state.CurrentDirectory, _logger);
         _state.LastExitCode = code;
         return code;
+    }
+
+    private bool IsScriptFile(string command)
+    {
+        var fullPath = Path.GetFullPath(command, _state.CurrentDirectory);
+        if (!File.Exists(fullPath))
+            return false;
+
+        var extension = Path.GetExtension(fullPath);
+        var isScriptExtension = ScriptExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase);
+        var hasSeparator = command.Contains('/') || command.Contains('\\');
+
+        if (hasSeparator)
+            return !IsNativeExecutable(fullPath);
+        return isScriptExtension;
+    }
+
+    private static bool IsNativeExecutable(string path)
+    {
+        var extension = Path.GetExtension(path);
+        if (OperatingSystem.IsWindows())
+        {
+            return extension.Equals(".exe", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".com", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".bat", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".cmd", StringComparison.OrdinalIgnoreCase);
+        }
+
+        try
+        {
+            var mode = File.GetUnixFileMode(path);
+            return (mode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute)) != 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private int ExecuteScriptFile(string path, IReadOnlyList<string> argv)
+    {
+        var fullPath = Path.GetFullPath(path, _state.CurrentDirectory);
+
+        var savedName = _state.ScriptName;
+        var savedArgs = _state.PositionalArgs;
+        _state.ScriptName = path;
+        _state.PositionalArgs = argv.Skip(1).ToArray();
+        try
+        {
+            _logger?.Debug(Resources.LogScriptFile, fullPath);
+            return ExecuteScript(File.ReadAllText(fullPath));
+        }
+        finally
+        {
+            _state.ScriptName = savedName;
+            _state.PositionalArgs = savedArgs;
+        }
     }
 
     public int ExecutePipeline(IReadOnlyList<PipelineStage> stages)
@@ -230,7 +303,7 @@ public sealed class Shell : IShellContext, IShellRuntime
         _state.LastBackgroundPid = job.Process.Id;
         _jobs.Add(job);
         Console.Out.WriteLine($"[{job.Id}] {job.Process.Id}");
-        _logger.Information("作业启动 [{JobId}] {Command} (PID {Pid})", job.Id, job.Command, job.Process.Id);
+        _logger.Information(Resources.LogJobStarted, job.Id, job.Command, job.Process.Id);
         JobStarted?.Invoke(this, new JobEventArgs(job));
         return 0;
     }
@@ -340,7 +413,7 @@ public sealed class Shell : IShellContext, IShellRuntime
         var full = Path.GetFullPath(path, _state.CurrentDirectory);
         if (!File.Exists(full))
         {
-            Console.Error.WriteLine($"source: 文件不存在: {path}");
+            Console.Error.WriteLine(string.Format(Resources.ShellSourceFileNotFound, path));
             return 1;
         }
         return ExecuteScript(File.ReadAllText(full));
@@ -358,11 +431,11 @@ public sealed class Shell : IShellContext, IShellRuntime
             job.Error.Wait();
             var output = job.Output.Result + job.Error.Result;
 
-            Console.Out.WriteLine($"[{job.Id}] Done ({job.ExitCode})");
+            Console.Out.WriteLine(string.Format(Resources.ShellJobDone, job.Id, job.ExitCode));
             if (output.Length > 0)
                 Console.Out.Write(output);
 
-            _logger.Information("作业完成 [{JobId}] 退出码 {ExitCode}", job.Id, job.ExitCode);
+            _logger.Information(Resources.LogJobCompleted, job.Id, job.ExitCode);
             job.Process.Dispose();
             _jobs.RemoveAt(i);
             JobCompleted?.Invoke(this, new JobEventArgs(job));
@@ -374,7 +447,7 @@ public sealed class Shell : IShellContext, IShellRuntime
         lock (_jobs)
         {
             foreach (var job in _jobs.Where(j => j.State == BackgroundJobState.Running))
-                Console.Out.WriteLine($"[{job.Id}] 运行中  {job.Command} (PID {job.Process.Id})");
+                Console.Out.WriteLine(string.Format(Resources.ShellJobRunning, job.Id, job.Command, job.Process.Id));
         }
     }
 }

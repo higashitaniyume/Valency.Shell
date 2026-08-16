@@ -7,7 +7,7 @@ namespace Valency.Shell.Logging;
 public static class ShellLogging
 {
     public const int DefaultUdpPort = 7310;
-    public const string OutputTemplate = "{Timestamp:HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}";
+    public const string OutputTemplate = "{Timestamp:HH:mm:ss.fff} [{Level:u3}] [{Src}] {Message:lj}{NewLine}";
 
     public static string GetLogDirectory()
     {
@@ -36,9 +36,10 @@ public static class ShellLogging
     public static ILogger CreateShellLogger(string logFilePath)
     {
         var port = GetUdpPort();
+        var minLevel = GetLogLevel();
 
         return new LoggerConfiguration()
-            .MinimumLevel.Debug()
+            .MinimumLevel.Is(minLevel)
             .WriteTo.Async(a => a.File(
                 logFilePath,
                 outputTemplate: OutputTemplate,
@@ -53,5 +54,14 @@ public static class ShellLogging
                 restrictedToMinimumLevel: LogEventLevel.Information,
                 outputTemplate: OutputTemplate)
             .CreateLogger();
+    }
+
+    public static LogEventLevel GetLogLevel()
+    {
+        var configured = Environment.GetEnvironmentVariable("VALENCY_LOG_LEVEL");
+        return string.Equals(configured, "verbose", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(configured, "trace", StringComparison.OrdinalIgnoreCase)
+            ? LogEventLevel.Verbose
+            : LogEventLevel.Debug;
     }
 }
