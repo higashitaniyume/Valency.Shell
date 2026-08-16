@@ -16,7 +16,7 @@ public sealed class TrueFalseColonCommand : IBuiltinCommand
         Spec = new CommandSpec
         {
             Name = _name,
-            Summary = _code == 0 ? "总是成功。" : "总是失败。",
+            Summary = _code == 0 ? Resources.TfAlwaysSucceed : Resources.TfAlwaysFail,
         };
     }
 

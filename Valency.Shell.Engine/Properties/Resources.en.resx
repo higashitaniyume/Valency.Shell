@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="CommandNotFound" xml:space="preserve">
+    <value>'{0}' is not a recognized command or executable</value>
+  </data>
+  <data name="CannotStartProcess" xml:space="preserve">
+    <value>Failed to start process: {0}</value>
+  </data>
+  <data name="StartFailed" xml:space="preserve">
+    <value>Failed to start '{0}': {1}</value>
+  </data>
+  <data name="PipelineStartFailed" xml:space="preserve">
+    <value>Failed to start pipeline: {0}</value>
+  </data>
+  <data name="PathResolved" xml:space="preserve">
+    <value>PATH resolved: {Command} → {Path}</value>
+  </data>
+  <data name="PipelineProcessStarted" xml:space="preserve">
+    <value>Pipeline process {Index}: {Command} (PID {Pid})</value>
+  </data>
+  <data name="LogCommandNotFound" xml:space="preserve">
+    <value>'{Command}' is not a recognized command or executable</value>
+  </data>
+  <data name="LogCannotStartProcess" xml:space="preserve">
+    <value>Failed to start process: {Command}</value>
+  </data>
+  <data name="LogStartFailed" xml:space="preserve">
+    <value>Failed to start '{Command}': {Message}</value>
+  </data>
+  <data name="LogPipelineStartFailed" xml:space="preserve">
+    <value>Failed to start pipeline: {Message}</value>
+  </data>
+</root>

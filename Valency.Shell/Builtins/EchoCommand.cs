@@ -8,12 +8,12 @@ public sealed class EchoCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Echo,
-        Summary = "输出一行文本。",
-        Positionals = ["[text...] 要输出的内容"],
+        Summary = Resources.EchoSummary,
+        Positionals = [Resources.EchoPositional],
         Options =
         [
-            new("no-newline", 'n', "不输出末尾换行", true),
-            new("enable-escapes", 'e', "解释反斜杠转义", true),
+            new("no-newline", 'n', Resources.EchoNoNewline, true),
+            new("enable-escapes", 'e', Resources.EchoEnableEscapes, true),
         ],
     };
 

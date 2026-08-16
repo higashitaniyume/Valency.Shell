@@ -7,7 +7,7 @@ public sealed class PwdCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Pwd,
-        Summary = "打印当前工作目录。",
+        Summary = Resources.PwdSummary,
     };
 
     public int Execute(ParseResult args, IShellContext context)

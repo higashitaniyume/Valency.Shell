@@ -7,8 +7,8 @@ public sealed class CdCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Cd,
-        Summary = "切换当前目录。无参数回到用户目录，'-' 回到上一个目录。",
-        Positionals = ["[dir] 目标目录"],
+        Summary = Resources.CdSummary,
+        Positionals = [Resources.CdPositional],
     };
 
     public int Execute(ParseResult args, IShellContext context)
@@ -26,7 +26,7 @@ public sealed class CdCommand : IBuiltinCommand
             var full = Path.GetFullPath(target, context.CurrentDirectory);
             if (!Directory.Exists(full))
             {
-                Console.Error.WriteLine($"cd: 路径不存在: {target}");
+                Console.Error.WriteLine(string.Format(Resources.CdPathNotFound, target));
                 return 1;
             }
 

@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ArgParserUnknownOption" xml:space="preserve">
+    <value>Unknown argument '{0}'</value>
+  </data>
+  <data name="ArgParserMissingValue" xml:space="preserve">
+    <value>Argument '{0}' requires a value</value>
+  </data>
+  <data name="CdSummary" xml:space="preserve">
+    <value>Change the current directory. No argument goes home, '-' goes back.</value>
+  </data>
+  <data name="CdPositional" xml:space="preserve">
+    <value>[dir] target directory</value>
+  </data>
+  <data name="CdPathNotFound" xml:space="preserve">
+    <value>cd: path not found: {0}</value>
+  </data>
+  <data name="BreakSummary" xml:space="preserve">
+    <value>Break out of the nearest loop.</value>
+  </data>
+  <data name="ContinueSummary" xml:space="preserve">
+    <value>Continue with the next iteration of the nearest loop.</value>
+  </data>
+  <data name="ReturnSummary" xml:space="preserve">
+    <value>Return from a function.</value>
+  </data>
+  <data name="ReturnPositional" xml:space="preserve">
+    <value>[n] return code, defaults to the previous command's exit code</value>
+  </data>
+  <data name="EchoSummary" xml:space="preserve">
+    <value>Print a line of text.</value>
+  </data>
+  <data name="EchoPositional" xml:space="preserve">
+    <value>[text...] content to print</value>
+  </data>
+  <data name="EchoNoNewline" xml:space="preserve">
+    <value>Do not print the trailing newline</value>
+  </data>
+  <data name="EchoEnableEscapes" xml:space="preserve">
+    <value>Interpret backslash escapes</value>
+  </data>
+  <data name="ExitSummary" xml:space="preserve">
+    <value>Exit the shell.</value>
+  </data>
+  <data name="ExitPositional" xml:space="preserve">
+    <value>[code] exit code, defaults to the previous command's exit code</value>
+  </data>
+  <data name="GrepSummary" xml:space="preserve">
+    <value>Filter lines containing a string (from stdin or files).</value>
+  </data>
+  <data name="GrepPositionalPattern" xml:space="preserve">
+    <value>pattern string to match</value>
+  </data>
+  <data name="GrepPositionalFile" xml:space="preserve">
+    <value>[file...] files to filter, defaults to stdin</value>
+  </data>
+  <data name="GrepIgnoreCase" xml:space="preserve">
+    <value>Ignore case</value>
+  </data>
+  <data name="GrepInvertMatch" xml:space="preserve">
+    <value>Invert: only output non-matching lines</value>
+  </data>
+  <data name="GrepLineNumber" xml:space="preserve">
+    <value>Show line numbers</value>
+  </data>
+  <data name="GrepCount" xml:space="preserve">
+    <value>Only output the match count</value>
+  </data>
+  <data name="GrepMissingPattern" xml:space="preserve">
+    <value>grep: missing pattern</value>
+  </data>
+  <data name="GrepFileNotFound" xml:space="preserve">
+    <value>grep: file not found: {0}</value>
+  </data>
+  <data name="HelpSummary" xml:space="preserve">
+    <value>Show help for built-in commands. No argument lists all commands.</value>
+  </data>
+  <data name="HelpPositional" xml:space="preserve">
+    <value>[command] command name to show details for</value>
+  </data>
+  <data name="HelpListTitle" xml:space="preserve">
+    <value>Built-in commands:</value>
+  </data>
+  <data name="HelpUnknownCommand" xml:space="preserve">
+    <value>help: unknown command '{0}'</value>
+  </data>
+  <data name="HelpUsage" xml:space="preserve">
+    <value>Usage: {0} {1}</value>
+  </data>
+  <data name="HelpPositionals" xml:space="preserve">
+    <value>Positional arguments:</value>
+  </data>
+  <data name="HelpOptions" xml:space="preserve">
+    <value>Options:</value>
+  </data>
+  <data name="JobsSummary" xml:space="preserve">
+    <value>List running background jobs.</value>
+  </data>
+  <data name="LogsSummary" xml:space="preserve">
+    <value>View the current session log, showing everything by default.</value>
+  </data>
+  <data name="LogsTail" xml:space="preserve">
+    <value>Show only the last N lines</value>
+  </data>
+  <data name="LogsHead" xml:space="preserve">
+    <value>Show only the first N lines</value>
+  </data>
+  <data name="LogsLevel" xml:space="preserve">
+    <value>Filter by level: verbose|debug|info|warn|error|fatal</value>
+  </data>
+  <data name="LogsFollow" xml:space="preserve">
+    <value>Follow the log in a separate window (UDP)</value>
+  </data>
+  <data name="LogsFileNotFound" xml:space="preserve">
+    <value>logs: log file not found: {0}</value>
+  </data>
+  <data name="LogsTotalLines" xml:space="preserve">
+    <value>{0} lines total</value>
+  </data>
+  <data name="LogsViewerNotFound" xml:space="preserve">
+    <value>Log viewer not found; run: dotnet run --project Valency.Shell.LogViewer</value>
+  </data>
+  <data name="LogsOpenedNewWindow" xml:space="preserve">
+    <value>Opened the log viewer in a new window (UDP realtime mode)</value>
+  </data>
+  <data name="LogsRunInAnotherTerminal" xml:space="preserve">
+    <value>Run in another terminal: "{0}" --udp {1}</value>
+  </data>
+  <data name="PromptSummary" xml:space="preserve">
+    <value>View or switch the prompt style.</value>
+  </data>
+  <data name="PromptPositionalStyle" xml:space="preserve">
+    <value>[style] plain | kali | custom</value>
+  </data>
+  <data name="PromptPositionalTemplate" xml:space="preserve">
+    <value>[template...] custom template (when style is custom)</value>
+  </data>
+  <data name="PromptCurrentStyle" xml:space="preserve">
+    <value>Current prompt style: {0}</value>
+  </data>
+  <data name="PromptCustomTemplate" xml:space="preserve">
+    <value>Custom template: {0}</value>
+  </data>
+  <data name="PromptUnknownStyle" xml:space="preserve">
+    <value>prompt: unknown style '{0}', available: plain | kali | custom [template]</value>
+  </data>
+  <data name="PwdSummary" xml:space="preserve">
+    <value>Print the current working directory.</value>
+  </data>
+  <data name="SourceSummary" xml:space="preserve">
+    <value>Read and execute a script file.</value>
+  </data>
+  <data name="SourcePositional" xml:space="preserve">
+    <value>FILE script file path</value>
+  </data>
+  <data name="SourceNeedFile" xml:space="preserve">
+    <value>{0}: a file path is required</value>
+  </data>
+  <data name="TestSummary" xml:space="preserve">
+    <value>Conditional test.</value>
+  </data>
+  <data name="TestSummaryBracket" xml:space="preserve">
+    <value>Conditional test ([ expression ]).</value>
+  </data>
+  <data name="TestPositional" xml:space="preserve">
+    <value>expression test expression</value>
+  </data>
+  <data name="TestMissingBracket" xml:space="preserve">
+    <value>[: missing ']'</value>
+  </data>
+  <data name="TfAlwaysSucceed" xml:space="preserve">
+    <value>Always succeed.</value>
+  </data>
+  <data name="TfAlwaysFail" xml:space="preserve">
+    <value>Always fail.</value>
+  </data>
+  <data name="ExportSummary" xml:space="preserve">
+    <value>Export variables to child process environment.</value>
+  </data>
+  <data name="ExportPositional" xml:space="preserve">
+    <value>[NAME[=VALUE]...] variable name (optional value)</value>
+  </data>
+  <data name="UnsetSummary" xml:space="preserve">
+    <value>Remove variables.</value>
+  </data>
+  <data name="UnsetPositional" xml:space="preserve">
+    <value>NAME... variable name</value>
+  </data>
+  <data name="ReadSummary" xml:space="preserve">
+    <value>Read a line from standard input into variables.</value>
+  </data>
+  <data name="ReadPositional" xml:space="preserve">
+    <value>NAME... variable name</value>
+  </data>
+  <data name="ReadNeedVariable" xml:space="preserve">
+    <value>read: a variable name is required</value>
+  </data>
+  <data name="ShiftSummary" xml:space="preserve">
+    <value>Shift positional parameters left.</value>
+  </data>
+  <data name="ShiftPositional" xml:space="preserve">
+    <value>[n] number to shift, defaults to 1</value>
+  </data>
+  <data name="ShiftInvalidCount" xml:space="preserve">
+    <value>shift: invalid count</value>
+  </data>
+  <data name="ShellSourceFileNotFound" xml:space="preserve">
+    <value>source: file not found: {0}</value>
+  </data>
+  <data name="ShellJobRunning" xml:space="preserve">
+    <value>[{0}] running  {1} (PID {2})</value>
+  </data>
+  <data name="ShellJobDone" xml:space="preserve">
+    <value>[{0}] done ({1})</value>
+  </data>
+  <data name="ProgramUsage" xml:space="preserve">
+    <value>Usage: valency -c &lt;command&gt;</value>
+  </data>
+  <data name="ProgramScriptNotFound" xml:space="preserve">
+    <value>valency: script file not found: {0}</value>
+  </data>
+  <data name="LogCtrlCInterrupted" xml:space="preserve">
+    <value>Received Ctrl+C, interrupting foreground processes</value>
+  </data>
+  <data name="LogParseFailed" xml:space="preserve">
+    <value>Parse failed: {Text}</value>
+  </data>
+  <data name="LogExpressionFailed" xml:space="preserve">
+    <value>Expression error: {Message}</value>
+  </data>
+  <data name="LogJobStarted" xml:space="preserve">
+    <value>Job started [{JobId}] {Command} (PID {Pid})</value>
+  </data>
+  <data name="LogJobCompleted" xml:space="preserve">
+    <value>Job completed [{JobId}] exit code {ExitCode}</value>
+  </data>
+  <data name="LogStartup" xml:space="preserve">
+    <value>Valency.Shell started PID={Pid} log={LogFile} UDP port={UdpPort}</value>
+  </data>
+  <data name="LogShutdown" xml:space="preserve">
+    <value>Valency.Shell exited code {ExitCode} duration {DurationMs}ms</value>
+  </data>
+  <data name="LogScriptFile" xml:space="preserve">
+    <value>Execute script: {Path}</value>
+  </data>
+</root>

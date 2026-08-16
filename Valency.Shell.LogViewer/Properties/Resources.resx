@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="FileNeedPath" xml:space="preserve">
+    <value>--file 需要指定日志文件路径</value>
+  </data>
+  <data name="UsageHeader" xml:space="preserve">
+    <value>用法: Valency.Shell.LogViewer [--udp [port]] [--file &lt;path&gt;] [--tail &lt;N&gt;]</value>
+  </data>
+  <data name="UsageUdp" xml:space="preserve">
+    <value>  --udp [port]  监听 UDP 日志端口 (默认 7310)，实时接收 shell 推送</value>
+  </data>
+  <data name="UsageFile" xml:space="preserve">
+    <value>  --file &lt;path&gt; 追尾日志文件</value>
+  </data>
+  <data name="UsageTail" xml:space="preserve">
+    <value>  --tail &lt;N&gt;    追文件时先显示最后 N 行再实时跟随</value>
+  </data>
+  <data name="ListeningUdp" xml:space="preserve">
+    <value>监听 UDP 日志端口 {0}，按 Ctrl+C 退出...</value>
+  </data>
+  <data name="FollowingFile" xml:space="preserve">
+    <value>跟随日志文件: {0}，按 Ctrl+C 退出...</value>
+  </data>
+</root>

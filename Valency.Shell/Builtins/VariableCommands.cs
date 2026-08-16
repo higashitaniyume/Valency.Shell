@@ -7,8 +7,8 @@ public sealed class ExportCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Export,
-        Summary = "导出变量到子进程环境。",
-        Positionals = ["[NAME[=VALUE]...] 变量名（可选赋值）"],
+        Summary = Resources.ExportSummary,
+        Positionals = [Resources.ExportPositional],
     };
 
     public int Execute(ParseResult args, IShellContext context)
@@ -35,8 +35,8 @@ public sealed class UnsetCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Unset,
-        Summary = "删除变量。",
-        Positionals = ["NAME... 变量名"],
+        Summary = Resources.UnsetSummary,
+        Positionals = [Resources.UnsetPositional],
     };
 
     public int Execute(ParseResult args, IShellContext context)
@@ -52,15 +52,15 @@ public sealed class ReadCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Read,
-        Summary = "从标准输入读取一行并赋值给变量。",
-        Positionals = ["NAME... 变量名"],
+        Summary = Resources.ReadSummary,
+        Positionals = [Resources.ReadPositional],
     };
 
     public int Execute(ParseResult args, IShellContext context)
     {
         if (args.Positionals.Count == 0)
         {
-            Console.Error.WriteLine("read: 需要变量名");
+            Console.Error.WriteLine(Resources.ReadNeedVariable);
             return 2;
         }
 
@@ -92,8 +92,8 @@ public sealed class ShiftCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Shift,
-        Summary = "左移位置参数。",
-        Positionals = ["[n] 移动数量，默认 1"],
+        Summary = Resources.ShiftSummary,
+        Positionals = [Resources.ShiftPositional],
     };
 
     public int Execute(ParseResult args, IShellContext context)
@@ -103,7 +103,7 @@ public sealed class ShiftCommand : IBuiltinCommand
         {
             if (!int.TryParse(args.Positionals[0], out count))
             {
-                Console.Error.WriteLine("shift: 无效的数值");
+                Console.Error.WriteLine(Resources.ShiftInvalidCount);
                 return 2;
             }
         }

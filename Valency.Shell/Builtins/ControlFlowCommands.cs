@@ -8,7 +8,7 @@ public sealed class BreakCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Break,
-        Summary = "跳出最近的循环。",
+        Summary = Resources.BreakSummary,
     };
 
     public int Execute(ParseResult args, IShellContext context)
@@ -20,7 +20,7 @@ public sealed class ContinueCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Continue,
-        Summary = "继续最近循环的下一次迭代。",
+        Summary = Resources.ContinueSummary,
     };
 
     public int Execute(ParseResult args, IShellContext context)
@@ -32,8 +32,8 @@ public sealed class ReturnCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Return,
-        Summary = "从函数返回。",
-        Positionals = ["[n] 返回码，默认上一条命令的退出码"],
+        Summary = Resources.ReturnSummary,
+        Positionals = [Resources.ReturnPositional],
     };
 
     public int Execute(ParseResult args, IShellContext context)

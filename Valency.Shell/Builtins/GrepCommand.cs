@@ -7,18 +7,18 @@ public sealed class GrepCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Grep,
-        Summary = "筛选包含指定字符串的行（从标准输入或文件）。",
+        Summary = Resources.GrepSummary,
         Positionals =
         [
-            "pattern 要匹配的字符串",
-            "[file...] 要筛选的文件，缺省读标准输入",
+            Resources.GrepPositionalPattern,
+            Resources.GrepPositionalFile,
         ],
         Options =
         [
-            new("ignore-case", 'i', "忽略大小写", true),
-            new("invert-match", 'v', "反向：只输出不匹配的行", true),
-            new("line-number", 'n', "显示行号", true),
-            new("count", 'c', "只输出匹配行数", true),
+            new("ignore-case", 'i', Resources.GrepIgnoreCase, true),
+            new("invert-match", 'v', Resources.GrepInvertMatch, true),
+            new("line-number", 'n', Resources.GrepLineNumber, true),
+            new("count", 'c', Resources.GrepCount, true),
         ],
     };
 
@@ -26,7 +26,7 @@ public sealed class GrepCommand : IBuiltinCommand
     {
         if (args.Positionals.Count == 0)
         {
-            Console.Error.WriteLine("grep: 缺少 pattern");
+            Console.Error.WriteLine(Resources.GrepMissingPattern);
             return 2;
         }
 
@@ -45,7 +45,7 @@ public sealed class GrepCommand : IBuiltinCommand
             {
                 if (!File.Exists(file))
                 {
-                    Console.Error.WriteLine($"grep: 文件不存在: {file}");
+                    Console.Error.WriteLine(string.Format(Resources.GrepFileNotFound, file));
                     return 2;
                 }
                 collected.AddRange(File.ReadLines(file));

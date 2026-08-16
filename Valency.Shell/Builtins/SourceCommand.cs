@@ -14,8 +14,8 @@ public sealed class SourceCommand : IBuiltinCommand
         Spec = new CommandSpec
         {
             Name = _name,
-            Summary = "读取并执行脚本文件。",
-            Positionals = ["FILE 脚本文件路径"],
+            Summary = Resources.SourceSummary,
+            Positionals = [Resources.SourcePositional],
         };
     }
 
@@ -23,7 +23,7 @@ public sealed class SourceCommand : IBuiltinCommand
     {
         if (args.Positionals.Count == 0)
         {
-            Console.Error.WriteLine($"{_name}: 需要文件路径");
+            Console.Error.WriteLine(string.Format(Resources.SourceNeedFile, _name));
             return 2;
         }
         return context.RunScriptFile(args.Positionals[0]);

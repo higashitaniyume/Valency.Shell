@@ -43,7 +43,7 @@ public static class ArgParser
                 var option = spec.FindOption(name);
                 if (option is null)
                 {
-                    error = $"未知参数 '{arg}'";
+                    error = string.Format(Resources.ArgParserUnknownOption, arg);
                     return null;
                 }
 
@@ -63,7 +63,7 @@ public static class ArgParser
                 }
                 else
                 {
-                    error = $"参数 '{arg}' 需要一个值";
+                    error = string.Format(Resources.ArgParserMissingValue, arg);
                     return null;
                 }
             }

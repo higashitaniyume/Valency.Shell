@@ -15,9 +15,9 @@ public sealed class TestCommand : IBuiltinCommand
         {
             Name = _bracket ? BuiltinNames.Bracket : BuiltinNames.Test,
             Summary = _bracket
-                ? "条件测试（[ 表达式 ]）。"
-                : "条件测试。",
-            Positionals = ["expression 测试表达式"],
+                ? Resources.TestSummaryBracket
+                : Resources.TestSummary,
+            Positionals = [Resources.TestPositional],
             RawArgs = true,
         };
     }
@@ -30,7 +30,7 @@ public sealed class TestCommand : IBuiltinCommand
         {
             if (operands.Count == 0 || operands[^1] != "]")
             {
-                Console.Error.WriteLine("[: 缺少 ']'");
+                Console.Error.WriteLine(Resources.TestMissingBracket);
                 return 2;
             }
             operands.RemoveAt(operands.Count - 1);

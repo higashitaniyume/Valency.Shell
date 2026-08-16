@@ -18,13 +18,13 @@ public sealed class LogsCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Logs,
-        Summary = "查看当前会话日志，默认显示全部（从开始到现在）。",
+        Summary = Resources.LogsSummary,
         Options =
         [
-            new("tail", 'n', "只显示最近 N 行", false, "N"),
-            new("head", null, "只显示最前 N 行", false, "N"),
-            new("level", null, "按级别过滤: debug|info|warn|error|fatal", false, "LEVEL"),
-            new("follow", 'f', "在独立窗口实时跟随日志 (UDP)", true),
+            new("tail", 'n', Resources.LogsTail, false, "N"),
+            new("head", null, Resources.LogsHead, false, "N"),
+            new("level", null, Resources.LogsLevel, false, "LEVEL"),
+            new("follow", 'f', Resources.LogsFollow, true),
         ],
     };
 
@@ -43,7 +43,7 @@ public sealed class LogsCommand : IBuiltinCommand
     {
         if (!File.Exists(_logFilePath))
         {
-            Console.Error.WriteLine($"logs: 日志文件不存在: {_logFilePath}");
+            Console.Error.WriteLine(string.Format(Resources.LogsFileNotFound, _logFilePath));
             return 1;
         }
 
@@ -53,7 +53,7 @@ public sealed class LogsCommand : IBuiltinCommand
         foreach (var line in result)
             PrintColored(line.Raw);
 
-        Console.Out.WriteLine($"共 {result.Count} 行");
+        Console.Out.WriteLine(string.Format(Resources.LogsTotalLines, result.Count));
         return 0;
     }
 
@@ -62,7 +62,7 @@ public sealed class LogsCommand : IBuiltinCommand
         var viewer = ResolveViewerPath();
         if (viewer is null)
         {
-            Console.Out.WriteLine("未找到日志查看器，可手动运行: dotnet run --project Valency.Shell.LogViewer");
+            Console.Out.WriteLine(Resources.LogsViewerNotFound);
             return 1;
         }
 
@@ -76,11 +76,11 @@ public sealed class LogsCommand : IBuiltinCommand
                 CreateNoWindow = true,
             };
             Process.Start(startInfo);
-            Console.Out.WriteLine("已在新窗口打开日志查看器 (UDP 实时模式)");
+            Console.Out.WriteLine(Resources.LogsOpenedNewWindow);
         }
         else
         {
-            Console.Out.WriteLine($"请在另一个终端运行: \"{viewer}\" --udp {_udpPort}");
+            Console.Out.WriteLine(string.Format(Resources.LogsRunInAnotherTerminal, viewer, _udpPort));
         }
 
         return 0;

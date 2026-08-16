@@ -8,12 +8,12 @@ public static class HelpRenderer
     {
         Console.Out.WriteLine($"{spec.Name} - {spec.Summary}");
         Console.Out.WriteLine();
-        Console.Out.WriteLine($"用法: {spec.Name} {BuildUsage(spec)}");
+        Console.Out.WriteLine(string.Format(Resources.HelpUsage, spec.Name, BuildUsage(spec)));
 
         if (spec.Positionals.Count > 0)
         {
             Console.Out.WriteLine();
-            Console.Out.WriteLine("位置参数:");
+            Console.Out.WriteLine(Resources.HelpPositionals);
             foreach (var positional in spec.Positionals)
                 Console.Out.WriteLine($"  {positional}");
         }
@@ -21,7 +21,7 @@ public static class HelpRenderer
         if (spec.Options.Count > 0)
         {
             Console.Out.WriteLine();
-            Console.Out.WriteLine("选项:");
+            Console.Out.WriteLine(Resources.HelpOptions);
             foreach (var option in spec.Options)
                 Console.Out.WriteLine($"  {FormatOption(option),-24} {option.Description}");
         }

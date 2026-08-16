@@ -7,7 +7,7 @@ public sealed class JobsCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Jobs,
-        Summary = "列出正在运行的后台作业。",
+        Summary = Resources.JobsSummary,
     };
 
     public int Execute(ParseResult args, IShellContext context)

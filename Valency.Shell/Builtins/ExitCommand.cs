@@ -8,8 +8,8 @@ public sealed class ExitCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Exit,
-        Summary = "退出 shell。",
-        Positionals = ["[code] 退出码，默认使用上一条命令的退出码"],
+        Summary = Resources.ExitSummary,
+        Positionals = [Resources.ExitPositional],
     };
 
     public int Execute(ParseResult args, IShellContext context)

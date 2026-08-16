@@ -15,11 +15,11 @@ public sealed class PromptCommand : IBuiltinCommand
     public CommandSpec Spec { get; } = new()
     {
         Name = BuiltinNames.Prompt,
-        Summary = "查看或切换提示符风格。",
+        Summary = Resources.PromptSummary,
         Positionals =
         [
-            "[style] plain | kali | custom",
-            "[template...] 自定义模板（style 为 custom 时）",
+            Resources.PromptPositionalStyle,
+            Resources.PromptPositionalTemplate,
         ],
     };
 
@@ -27,9 +27,9 @@ public sealed class PromptCommand : IBuiltinCommand
     {
         if (args.Positionals.Count == 0)
         {
-            Console.Out.WriteLine($"当前提示符风格: {_settings.Style}");
+            Console.Out.WriteLine(string.Format(Resources.PromptCurrentStyle, _settings.Style));
             if (_settings.Style == PromptSettings.Custom)
-                Console.Out.WriteLine($"自定义模板: {_settings.CustomTemplate}");
+                Console.Out.WriteLine(string.Format(Resources.PromptCustomTemplate, _settings.CustomTemplate));
             return 0;
         }
 
@@ -47,7 +47,7 @@ public sealed class PromptCommand : IBuiltinCommand
                     _settings.CustomTemplate = string.Join(" ", args.Positionals.Skip(1));
                 return 0;
             default:
-                Console.Error.WriteLine($"prompt: 未知风格 '{args.Positionals[0]}'，可用: plain | kali | custom [模板]");
+                Console.Error.WriteLine(string.Format(Resources.PromptUnknownStyle, args.Positionals[0]));
                 return 2;
         }
     }

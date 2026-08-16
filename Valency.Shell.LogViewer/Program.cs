@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Valency.Shell.LogViewer;
 
 const int defaultPort = 7310;
 
@@ -46,7 +47,7 @@ if (mode == "file")
 {
     if (file is null)
     {
-        Console.Error.WriteLine("--file 需要指定日志文件路径");
+        Console.Error.WriteLine(Resources.FileNeedPath);
         PrintUsage();
         return 2;
     }
@@ -61,16 +62,16 @@ return 0;
 
 static void PrintUsage()
 {
-    Console.Out.WriteLine("用法: Valency.Shell.LogViewer [--udp [port]] [--file <path>] [--tail <N>]");
-    Console.Out.WriteLine("  --udp [port]  监听 UDP 日志端口 (默认 7310)，实时接收 shell 推送");
-    Console.Out.WriteLine("  --file <path> 追尾日志文件");
-    Console.Out.WriteLine("  --tail <N>    追文件时先显示最后 N 行再实时跟随");
+    Console.Out.WriteLine(Resources.UsageHeader);
+    Console.Out.WriteLine(Resources.UsageUdp);
+    Console.Out.WriteLine(Resources.UsageFile);
+    Console.Out.WriteLine(Resources.UsageTail);
 }
 
 static void ListenUdp(int port)
 {
     using var client = new UdpClient(new IPEndPoint(IPAddress.Loopback, port));
-    Console.WriteLine($"监听 UDP 日志端口 {port}，按 Ctrl+C 退出...");
+    Console.WriteLine(string.Format(Resources.ListeningUdp, port));
     while (true)
     {
         var remote = new IPEndPoint(IPAddress.Any, 0);
@@ -112,7 +113,7 @@ static void TailFile(string path, int tailLines)
         position = stream.Length;
     }
 
-    Console.WriteLine($"跟随日志文件: {path}，按 Ctrl+C 退出...");
+    Console.WriteLine(string.Format(Resources.FollowingFile, path));
 
     while (true)
     {

@@ -5,6 +5,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,6 +13,13 @@
     <ProjectReference Include="..\Valency.Shell.Scripting\Valency.Shell.Scripting.csproj" />
     <ProjectReference Include="..\Valency.Shell.Engine\Valency.Shell.Engine.csproj" />
     <ProjectReference Include="..\Valency.Shell.LogViewer\Valency.Shell.LogViewer.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Properties\Resources.resx" />
+    <EmbeddedResource Include="Properties\Resources.en.resx">
+      <DependentUpon>Resources.resx</DependentUpon>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

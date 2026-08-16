@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="ArgParserUnknownOption" xml:space="preserve">
+    <value>未知参数 '{0}'</value>
+  </data>
+  <data name="ArgParserMissingValue" xml:space="preserve">
+    <value>参数 '{0}' 需要一个值</value>
+  </data>
+  <data name="CdSummary" xml:space="preserve">
+    <value>切换当前目录。无参数回到用户目录，'-' 回到上一个目录。</value>
+  </data>
+  <data name="CdPositional" xml:space="preserve">
+    <value>[dir] 目标目录</value>
+  </data>
+  <data name="CdPathNotFound" xml:space="preserve">
+    <value>cd: 路径不存在: {0}</value>
+  </data>
+  <data name="BreakSummary" xml:space="preserve">
+    <value>跳出最近的循环。</value>
+  </data>
+  <data name="ContinueSummary" xml:space="preserve">
+    <value>继续最近循环的下一次迭代。</value>
+  </data>
+  <data name="ReturnSummary" xml:space="preserve">
+    <value>从函数返回。</value>
+  </data>
+  <data name="ReturnPositional" xml:space="preserve">
+    <value>[n] 返回码，默认上一条命令的退出码</value>
+  </data>
+  <data name="EchoSummary" xml:space="preserve">
+    <value>输出一行文本。</value>
+  </data>
+  <data name="EchoPositional" xml:space="preserve">
+    <value>[text...] 要输出的内容</value>
+  </data>
+  <data name="EchoNoNewline" xml:space="preserve">
+    <value>不输出末尾换行</value>
+  </data>
+  <data name="EchoEnableEscapes" xml:space="preserve">
+    <value>解释反斜杠转义</value>
+  </data>
+  <data name="ExitSummary" xml:space="preserve">
+    <value>退出 shell。</value>
+  </data>
+  <data name="ExitPositional" xml:space="preserve">
+    <value>[code] 退出码，默认使用上一条命令的退出码</value>
+  </data>
+  <data name="GrepSummary" xml:space="preserve">
+    <value>筛选包含指定字符串的行（从标准输入或文件）。</value>
+  </data>
+  <data name="GrepPositionalPattern" xml:space="preserve">
+    <value>pattern 要匹配的字符串</value>
+  </data>
+  <data name="GrepPositionalFile" xml:space="preserve">
+    <value>[file...] 要筛选的文件，缺省读标准输入</value>
+  </data>
+  <data name="GrepIgnoreCase" xml:space="preserve">
+    <value>忽略大小写</value>
+  </data>
+  <data name="GrepInvertMatch" xml:space="preserve">
+    <value>反向：只输出不匹配的行</value>
+  </data>
+  <data name="GrepLineNumber" xml:space="preserve">
+    <value>显示行号</value>
+  </data>
+  <data name="GrepCount" xml:space="preserve">
+    <value>只输出匹配行数</value>
+  </data>
+  <data name="GrepMissingPattern" xml:space="preserve">
+    <value>grep: 缺少 pattern</value>
+  </data>
+  <data name="GrepFileNotFound" xml:space="preserve">
+    <value>grep: 文件不存在: {0}</value>
+  </data>
+  <data name="HelpSummary" xml:space="preserve">
+    <value>显示内置命令的帮助。无参数列出所有命令。</value>
+  </data>
+  <data name="HelpPositional" xml:space="preserve">
+    <value>[command] 要查看详情的命令名</value>
+  </data>
+  <data name="HelpListTitle" xml:space="preserve">
+    <value>内置命令:</value>
+  </data>
+  <data name="HelpUnknownCommand" xml:space="preserve">
+    <value>help: 未知命令 '{0}'</value>
+  </data>
+  <data name="HelpUsage" xml:space="preserve">
+    <value>用法: {0} {1}</value>
+  </data>
+  <data name="HelpPositionals" xml:space="preserve">
+    <value>位置参数:</value>
+  </data>
+  <data name="HelpOptions" xml:space="preserve">
+    <value>选项:</value>
+  </data>
+  <data name="JobsSummary" xml:space="preserve">
+    <value>列出正在运行的后台作业。</value>
+  </data>
+  <data name="LogsSummary" xml:space="preserve">
+    <value>查看当前会话日志，默认显示全部（从开始到现在）。</value>
+  </data>
+  <data name="LogsTail" xml:space="preserve">
+    <value>只显示最近 N 行</value>
+  </data>
+  <data name="LogsHead" xml:space="preserve">
+    <value>只显示最前 N 行</value>
+  </data>
+  <data name="LogsLevel" xml:space="preserve">
+    <value>按级别过滤: verbose|debug|info|warn|error|fatal</value>
+  </data>
+  <data name="LogsFollow" xml:space="preserve">
+    <value>在独立窗口实时跟随日志 (UDP)</value>
+  </data>
+  <data name="LogsFileNotFound" xml:space="preserve">
+    <value>logs: 日志文件不存在: {0}</value>
+  </data>
+  <data name="LogsTotalLines" xml:space="preserve">
+    <value>共 {0} 行</value>
+  </data>
+  <data name="LogsViewerNotFound" xml:space="preserve">
+    <value>未找到日志查看器，可手动运行: dotnet run --project Valency.Shell.LogViewer</value>
+  </data>
+  <data name="LogsOpenedNewWindow" xml:space="preserve">
+    <value>已在新窗口打开日志查看器 (UDP 实时模式)</value>
+  </data>
+  <data name="LogsRunInAnotherTerminal" xml:space="preserve">
+    <value>请在另一个终端运行: "{0}" --udp {1}</value>
+  </data>
+  <data name="PromptSummary" xml:space="preserve">
+    <value>查看或切换提示符风格。</value>
+  </data>
+  <data name="PromptPositionalStyle" xml:space="preserve">
+    <value>[style] plain | kali | custom</value>
+  </data>
+  <data name="PromptPositionalTemplate" xml:space="preserve">
+    <value>[template...] 自定义模板（style 为 custom 时）</value>
+  </data>
+  <data name="PromptCurrentStyle" xml:space="preserve">
+    <value>当前提示符风格: {0}</value>
+  </data>
+  <data name="PromptCustomTemplate" xml:space="preserve">
+    <value>自定义模板: {0}</value>
+  </data>
+  <data name="PromptUnknownStyle" xml:space="preserve">
+    <value>prompt: 未知风格 '{0}'，可用: plain | kali | custom [模板]</value>
+  </data>
+  <data name="PwdSummary" xml:space="preserve">
+    <value>打印当前工作目录。</value>
+  </data>
+  <data name="SourceSummary" xml:space="preserve">
+    <value>读取并执行脚本文件。</value>
+  </data>
+  <data name="SourcePositional" xml:space="preserve">
+    <value>FILE 脚本文件路径</value>
+  </data>
+  <data name="SourceNeedFile" xml:space="preserve">
+    <value>{0}: 需要文件路径</value>
+  </data>
+  <data name="TestSummary" xml:space="preserve">
+    <value>条件测试。</value>
+  </data>
+  <data name="TestSummaryBracket" xml:space="preserve">
+    <value>条件测试（[ 表达式 ]）。</value>
+  </data>
+  <data name="TestPositional" xml:space="preserve">
+    <value>expression 测试表达式</value>
+  </data>
+  <data name="TestMissingBracket" xml:space="preserve">
+    <value>[: 缺少 ']'</value>
+  </data>
+  <data name="TfAlwaysSucceed" xml:space="preserve">
+    <value>总是成功。</value>
+  </data>
+  <data name="TfAlwaysFail" xml:space="preserve">
+    <value>总是失败。</value>
+  </data>
+  <data name="ExportSummary" xml:space="preserve">
+    <value>导出变量到子进程环境。</value>
+  </data>
+  <data name="ExportPositional" xml:space="preserve">
+    <value>[NAME[=VALUE]...] 变量名（可选赋值）</value>
+  </data>
+  <data name="UnsetSummary" xml:space="preserve">
+    <value>删除变量。</value>
+  </data>
+  <data name="UnsetPositional" xml:space="preserve">
+    <value>NAME... 变量名</value>
+  </data>
+  <data name="ReadSummary" xml:space="preserve">
+    <value>从标准输入读取一行并赋值给变量。</value>
+  </data>
+  <data name="ReadPositional" xml:space="preserve">
+    <value>NAME... 变量名</value>
+  </data>
+  <data name="ReadNeedVariable" xml:space="preserve">
+    <value>read: 需要变量名</value>
+  </data>
+  <data name="ShiftSummary" xml:space="preserve">
+    <value>左移位置参数。</value>
+  </data>
+  <data name="ShiftPositional" xml:space="preserve">
+    <value>[n] 移动数量，默认 1</value>
+  </data>
+  <data name="ShiftInvalidCount" xml:space="preserve">
+    <value>shift: 无效的数值</value>
+  </data>
+  <data name="ShellSourceFileNotFound" xml:space="preserve">
+    <value>source: 文件不存在: {0}</value>
+  </data>
+  <data name="ShellJobRunning" xml:space="preserve">
+    <value>[{0}] 运行中  {1} (PID {2})</value>
+  </data>
+  <data name="ShellJobDone" xml:space="preserve">
+    <value>[{0}] 完成 ({1})</value>
+  </data>
+  <data name="ProgramUsage" xml:space="preserve">
+    <value>用法: valency -c &lt;命令&gt;</value>
+  </data>
+  <data name="ProgramScriptNotFound" xml:space="preserve">
+    <value>valency: 脚本文件不存在: {0}</value>
+  </data>
+  <data name="LogCtrlCInterrupted" xml:space="preserve">
+    <value>收到 Ctrl+C，中断前台进程</value>
+  </data>
+  <data name="LogParseFailed" xml:space="preserve">
+    <value>解析失败: {Text}</value>
+  </data>
+  <data name="LogExpressionFailed" xml:space="preserve">
+    <value>表达式错误: {Message}</value>
+  </data>
+  <data name="LogJobStarted" xml:space="preserve">
+    <value>作业启动 [{JobId}] {Command} (PID {Pid})</value>
+  </data>
+  <data name="LogJobCompleted" xml:space="preserve">
+    <value>作业完成 [{JobId}] 退出码 {ExitCode}</value>
+  </data>
+  <data name="LogStartup" xml:space="preserve">
+    <value>Valency.Shell 启动 PID={Pid} 日志文件={LogFile} UDP端口={UdpPort}</value>
+  </data>
+  <data name="LogShutdown" xml:space="preserve">
+    <value>Valency.Shell 退出 退出码 {ExitCode} 运行时长 {DurationMs}ms</value>
+  </data>
+  <data name="LogScriptFile" xml:space="preserve">
+    <value>执行脚本: {Path}</value>
+  </data>
+</root>
