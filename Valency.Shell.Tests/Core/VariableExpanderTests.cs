@@ -1,6 +1,6 @@
 using Valency.Shell;
 
-namespace Valency.Shell.Tests;
+namespace Valency.Shell.Tests.Core;
 
 public class VariableExpanderTests
 {
@@ -17,60 +17,58 @@ public class VariableExpanderTests
         return new VariableExpander(new FakeSource(vars.ToDictionary(v => v.Name, v => v.Value)));
     }
 
-    private static Token Tok(string text, bool expand = true)
-    {
-        return new Token([new TokenSegment(text, expand)]);
-    }
-
     [Fact]
     public void Expand_SimpleVariable()
     {
-        Assert.Equal("C:\\bin", Create(("PATH", "C:\\bin")).Expand(Tok("$PATH")));
+        Assert.Equal("C:\\bin", Create(("PATH", "C:\\bin")).ExpandText("$PATH"));
     }
 
     [Fact]
     public void Expand_BracedVariable_AllowsAdjacentChars()
     {
-        Assert.Equal("C:\\binX", Create(("PATH", "C:\\bin")).Expand(Tok("${PATH}X")));
+        Assert.Equal("C:\\binX", Create(("PATH", "C:\\bin")).ExpandText("${PATH}X"));
     }
 
     [Fact]
     public void Expand_EnvPrefix_CaseInsensitive()
     {
         var expander = Create(("PATH", "C:\\bin"));
-        Assert.Equal("C:\\bin", expander.Expand(Tok("$env:PATH")));
-        Assert.Equal("C:\\bin", expander.Expand(Tok("$ENV:PATH")));
+        Assert.Equal("C:\\bin", expander.ExpandText("$env:PATH"));
+        Assert.Equal("C:\\bin", expander.ExpandText("$ENV:PATH"));
     }
 
     [Fact]
     public void Expand_QuestionMark()
     {
-        Assert.Equal("42", Create(("?", "42")).Expand(Tok("$?")));
+        Assert.Equal("42", Create(("?", "42")).ExpandText("$?"));
+    }
+
+    [Fact]
+    public void Expand_PositionalAndSpecial()
+    {
+        var expander = Create(("1", "first"), ("@", "a b c"), ("#", "3"));
+        Assert.Equal("first", expander.ExpandText("$1"));
+        Assert.Equal("a b c", expander.ExpandText("$@"));
+        Assert.Equal("3", expander.ExpandText("$#"));
     }
 
     [Fact]
     public void Expand_Undefined_BecomesEmpty()
     {
-        Assert.Equal("ab", Create().Expand(Tok("a${NOPE}b")));
+        Assert.Equal("ab", Create().ExpandText("a${NOPE}b"));
     }
 
     [Fact]
     public void Expand_EscapedDollar_StaysLiteral()
     {
-        Assert.Equal("$PATH", Create(("PATH", "C:\\bin")).Expand(Tok("\\$PATH")));
-    }
-
-    [Fact]
-    public void Expand_NonExpandableSegment_StaysLiteral()
-    {
-        Assert.Equal("$PATH", Create(("PATH", "C:\\bin")).Expand(Tok("$PATH", expand: false)));
+        Assert.Equal("$PATH", Create(("PATH", "C:\\bin")).ExpandText("\\$PATH"));
     }
 
     [Fact]
     public void Expand_LoneDollar_StaysLiteral()
     {
-        Assert.Equal("a$", Create().Expand(Tok("a$")));
-        Assert.Equal("a$-b", Create().Expand(Tok("a$-b")));
+        Assert.Equal("a$", Create().ExpandText("a$"));
+        Assert.Equal("a$-b", Create().ExpandText("a$-b"));
     }
 
     [Fact]

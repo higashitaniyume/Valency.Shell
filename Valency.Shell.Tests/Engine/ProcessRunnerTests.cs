@@ -1,6 +1,6 @@
 using Valency.Shell;
 
-namespace Valency.Shell.Tests;
+namespace Valency.Shell.Tests.Engine;
 
 public class ProcessRunnerTests
 {

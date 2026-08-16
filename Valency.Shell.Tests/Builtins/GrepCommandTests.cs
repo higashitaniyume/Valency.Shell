@@ -1,7 +1,7 @@
 using System.Text;
 using Valency.Shell.Builtins;
 
-namespace Valency.Shell.Tests;
+namespace Valency.Shell.Tests.Builtins;
 
 public class GrepCommandTests
 {
@@ -11,11 +11,18 @@ public class GrepCommandTests
     {
         public int LastExitCode { get; set; }
         public string? PreviousDirectory { get; set; }
+        public string CurrentDirectory { get; set; } = Environment.CurrentDirectory;
         public bool ExitRequested => false;
         public int RequestedExitCode => 0;
         public TextReader? PipelineInput { get; init; }
         public void RequestExit(int exitCode) { }
         public void PrintJobs() { }
+        public string? GetVariable(string name) => null;
+        public void SetVariable(string name, string value, bool exported) { }
+        public void ExportVariable(string name) { }
+        public void UnsetVariable(string name) { }
+        public void ShiftArguments(int count) { }
+        public int RunScriptFile(string path) => 0;
     }
 
     private static StringWriter Run(string[] args, string input)

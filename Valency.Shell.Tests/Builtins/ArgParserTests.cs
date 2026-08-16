@@ -1,6 +1,6 @@
 using Valency.Shell.Builtins;
 
-namespace Valency.Shell.Tests;
+namespace Valency.Shell.Tests.Builtins;
 
 public class ArgParserTests
 {

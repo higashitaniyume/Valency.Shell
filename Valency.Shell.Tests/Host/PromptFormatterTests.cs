@@ -1,6 +1,6 @@
 using Valency.Shell.Prompting;
 
-namespace Valency.Shell.Tests;
+namespace Valency.Shell.Tests.Host;
 
 public class PromptFormatterTests
 {

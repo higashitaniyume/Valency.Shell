@@ -1,6 +1,6 @@
 using Valency.Shell.Core.Completion;
 
-namespace Valency.Shell.Tests;
+namespace Valency.Shell.Tests.Core;
 
 public class CompletionEngineTests : IDisposable
 {
