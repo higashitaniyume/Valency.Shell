@@ -58,10 +58,10 @@ public class ShellScriptTests
     }
 
     [Fact]
-    public void ArithmeticExpansion_IsEvaluated()
+    public void Expression_IsEvaluated()
     {
         var shell = CreateShell();
-        var output = Capture(() => shell.ExecuteLine("echo $((1+2*3))"));
+        var output = Capture(() => shell.ExecuteLine("$x = 1 + 2 * 3; echo $x"));
         Assert.Equal("7" + Environment.NewLine, output);
     }
 
@@ -77,15 +77,23 @@ public class ShellScriptTests
     public void If_RunsBranch()
     {
         var shell = CreateShell();
-        var output = Capture(() => shell.ExecuteLine("if true; then echo y; else echo n; fi"));
+        var output = Capture(() => shell.ExecuteLine("if (true) { echo y } else { echo n }"));
         Assert.Equal("y" + Environment.NewLine, output);
     }
 
     [Fact]
-    public void Function_And_PositionalArgs()
+    public void If_ElseIf_RunsBranch()
     {
         var shell = CreateShell();
-        var output = Capture(() => shell.ExecuteLine("greet() { echo hello $1; }; greet world"));
+        var output = Capture(() => shell.ExecuteLine("$x = 2; if ($x == 1) { echo one } else if ($x == 2) { echo two } else { echo other }"));
+        Assert.Equal("two" + Environment.NewLine, output);
+    }
+
+    [Fact]
+    public void Function_And_Parameters()
+    {
+        var shell = CreateShell();
+        var output = Capture(() => shell.ExecuteLine("function greet($name) { echo hello $name }; greet world"));
         Assert.Equal("hello world" + Environment.NewLine, output);
     }
 
@@ -93,8 +101,8 @@ public class ShellScriptTests
     public void ForLoop_Iterates()
     {
         var shell = CreateShell();
-        var output = Capture(() => shell.ExecuteLine("for i in a b; do echo $i; done"));
-        Assert.Equal("a" + Environment.NewLine + "b" + Environment.NewLine, output);
+        var output = Capture(() => shell.ExecuteLine("for ($i = 0; $i < 2; $i++) { echo $i }"));
+        Assert.Equal("0" + Environment.NewLine + "1" + Environment.NewLine, output);
     }
 
     [Fact]
@@ -102,7 +110,7 @@ public class ShellScriptTests
     {
         var shell = CreateShell();
         var output = Capture(() =>
-            shell.ExecuteLine("i=0; while true; do i=$((i+1)); if [ $i -ge 3 ]; then break; fi; done; echo $i"));
+            shell.ExecuteLine("$i = 0; while (true) { $i = $i + 1; if ($i >= 3) { break } }; echo $i"));
         Assert.Equal("3" + Environment.NewLine, output);
     }
 
@@ -133,12 +141,12 @@ public class ShellScriptTests
         try
         {
             var script = Path.Combine(dir, "s.sh");
-            File.WriteAllText(script, "if true; then echo yes; fi\nfor i in 1 2; do echo $i; done\n");
+            File.WriteAllText(script, "if (true) { echo yes }\nfor ($i = 0; $i < 2; $i++) { echo $i }\n");
             using var reader = new StreamReader(script);
             var output = Capture(() => shell.RunScript(reader));
             Assert.Contains("yes", output);
+            Assert.Contains("0", output);
             Assert.Contains("1", output);
-            Assert.Contains("2", output);
         }
         finally
         {

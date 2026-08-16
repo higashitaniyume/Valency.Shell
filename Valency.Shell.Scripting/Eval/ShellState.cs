@@ -8,7 +8,7 @@ public sealed class ShellState
     private readonly Dictionary<string, string> _vars = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _exported = new(StringComparer.OrdinalIgnoreCase);
 
-    public Dictionary<string, FunctionDef> Functions { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, FunctionDecl> Functions { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public int LastExitCode { get; set; }
     public string ScriptName { get; set; } = "valency";

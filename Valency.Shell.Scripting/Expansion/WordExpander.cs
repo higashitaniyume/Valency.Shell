@@ -1,6 +1,5 @@
 using System.Text;
 using Valency.Shell.Core.Expansion;
-using Valency.Shell.Scripting.Arithmetic;
 using Valency.Shell.Scripting.Ast;
 
 namespace Valency.Shell.Scripting.Expansion;
@@ -11,16 +10,13 @@ public sealed class WordExpander
 {
     private readonly VariableExpander _variableExpander;
     private readonly Func<string, string> _commandSubstitution;
-    private readonly Func<string, long> _arithmeticResolver;
 
     public WordExpander(
         IVariableSource variables,
-        Func<string, string> commandSubstitution,
-        Func<string, long> arithmeticResolver)
+        Func<string, string> commandSubstitution)
     {
         _variableExpander = new VariableExpander(variables);
         _commandSubstitution = commandSubstitution;
-        _arithmeticResolver = arithmeticResolver;
     }
 
     public ExpandedWord Expand(Word word)
@@ -49,10 +45,6 @@ public sealed class WordExpander
                 case CommandSubPart cs:
                     anyUnquoted = true;
                     sb.Append(_commandSubstitution(cs.Command));
-                    break;
-                case ArithSubPart ar:
-                    anyUnquoted = true;
-                    sb.Append(ArithmeticEvaluator.Evaluate(ar.Expression, _arithmeticResolver).ToString());
                     break;
             }
             first = false;

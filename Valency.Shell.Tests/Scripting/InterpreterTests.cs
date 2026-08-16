@@ -53,7 +53,6 @@ public class InterpreterTests
     public void And_ShortCircuitsOnFailure()
     {
         var (success, interp) = Create(0);
-        success.NextCode = 0;
         interp.Execute("a && b");
         Assert.Equal(2, success.SimpleCalls.Count);
 
@@ -75,11 +74,10 @@ public class InterpreterTests
     }
 
     [Fact]
-    public void VariableAssignment_And_Expansion()
+    public void Assignment_And_Expansion()
     {
         var (rt, interp) = Create();
-        interp.Execute("X=world");
-        interp.Execute("echo $X");
+        interp.Execute("$X = \"world\"; echo $X");
         Assert.Equal(new[] { "echo", "world" }, rt.SimpleCalls[^1]);
     }
 
@@ -96,27 +94,50 @@ public class InterpreterTests
     public void If_RunsMatchingBranch()
     {
         var (rt, interp) = Create(0);
-        interp.Execute("if true; then echo y; else echo n; fi");
-        Assert.Equal(["true"], rt.SimpleCalls[0]);
-        Assert.Equal(new[] { "echo", "y" }, rt.SimpleCalls[^1]);
+        interp.Execute("if (true) { echo y } else { echo n }");
+        Assert.Equal(new[] { "echo", "y" }, Assert.Single(rt.SimpleCalls));
     }
 
     [Fact]
-    public void For_IteratesItems()
+    public void If_ElseBranch()
+    {
+        var (rt, interp) = Create(0);
+        interp.Execute("if (false) { echo y } else { echo n }");
+        Assert.Equal(new[] { "echo", "n" }, Assert.Single(rt.SimpleCalls));
+    }
+
+    [Fact]
+    public void For_Iterates()
     {
         var (rt, interp) = Create();
-        interp.Execute("for x in a b; do echo $x; done");
+        interp.Execute("for ($i = 0; $i < 2; $i++) { echo $i }");
         Assert.Equal(2, rt.SimpleCalls.Count);
-        Assert.Equal(new[] { "echo", "a" }, rt.SimpleCalls[0]);
-        Assert.Equal(new[] { "echo", "b" }, rt.SimpleCalls[1]);
+        Assert.Equal(new[] { "echo", "0" }, rt.SimpleCalls[0]);
+        Assert.Equal(new[] { "echo", "1" }, rt.SimpleCalls[1]);
+    }
+
+    [Fact]
+    public void While_WithCondition()
+    {
+        var (rt, interp) = Create();
+        interp.Execute("$i = 0; while ($i < 2) { echo $i; $i++ }");
+        Assert.Equal(2, rt.SimpleCalls.Count);
     }
 
     [Fact]
     public void Function_DefinesAndInvokes()
     {
         var (rt, interp) = Create();
-        interp.Execute("f() { echo hi; }; f");
+        interp.Execute("function f() { echo hi }; f");
         Assert.Equal(new[] { "echo", "hi" }, Assert.Single(rt.SimpleCalls));
+    }
+
+    [Fact]
+    public void Function_Parameters()
+    {
+        var (rt, interp) = Create();
+        interp.Execute("function greet($name) { echo hello $name }; greet world");
+        Assert.Equal(new[] { "echo", "hello", "world" }, Assert.Single(rt.SimpleCalls));
     }
 
     [Fact]
@@ -126,7 +147,7 @@ public class InterpreterTests
         rt.Handler = argv => argv[0] == "return"
             ? throw new ControlFlowException(ControlFlowKind.Return, 5)
             : 0;
-        var code = interp.Execute("f() { return 5; }; f");
+        var code = interp.Execute("function f() { return 5 }; f");
         Assert.Equal(5, code);
     }
 
@@ -137,14 +158,6 @@ public class InterpreterTests
         interp.Execute("a | b");
         Assert.Single(rt.PipelineCalls);
         Assert.Equal(2, rt.PipelineCalls[0].Count);
-    }
-
-    [Fact]
-    public void ArithmeticCommand_ReturnsZeroWhenNonzero()
-    {
-        var (_, interp) = Create();
-        Assert.Equal(0, interp.Execute("(( 1 + 1 ))"));
-        Assert.Equal(1, interp.Execute("(( 0 ))"));
     }
 
     [Fact]

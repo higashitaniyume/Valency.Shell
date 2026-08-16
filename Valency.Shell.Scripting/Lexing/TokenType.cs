@@ -3,6 +3,7 @@ namespace Valency.Shell.Scripting.Lexing;
 public enum TokenType
 {
     Word,
+    Expression,
     AndIf,
     OrIf,
     Pipe,
@@ -23,7 +24,6 @@ public enum TokenType
     AndGreat,
     AndGreatAnd,
     LessGreat,
-    ArithCommand,
     Newline,
     EndOfFile,
 }

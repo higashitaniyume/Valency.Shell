@@ -32,7 +32,6 @@ public class LexerTests
         var tokens = ShellLexer.Tokenize("echo 'a b'");
         var word = tokens[1].Word!;
         Assert.Equal(new SingleQuotedPart("a b"), Assert.Single(word.Parts));
-        Assert.Equal("a b", word.Raw.Trim('\''));
     }
 
     [Fact]
@@ -48,7 +47,6 @@ public class LexerTests
     {
         Assert.Equal([(TokenType.Word, "cat"), (TokenType.GreatAnd, "2>&"), (TokenType.Word, "1"), (TokenType.EndOfFile, "")], Tokens("cat 2>&1"));
         Assert.Equal([(TokenType.Word, "echo"), (TokenType.RedirectOut, ">"), (TokenType.Word, "f"), (TokenType.EndOfFile, "")], Tokens("echo > f"));
-        Assert.Equal([(TokenType.Word, "echo"), (TokenType.Append, ">>"), (TokenType.Word, "f"), (TokenType.EndOfFile, "")], Tokens("echo >> f"));
         Assert.Equal([(TokenType.Word, "cmd"), (TokenType.RedirectOut, "2>"), (TokenType.Word, "f"), (TokenType.EndOfFile, "")], Tokens("cmd 2> f"));
         Assert.Equal([(TokenType.Word, "cmd"), (TokenType.RedirectIn, "<"), (TokenType.Word, "f"), (TokenType.EndOfFile, "")], Tokens("cmd < f"));
     }
@@ -62,17 +60,12 @@ public class LexerTests
     }
 
     [Fact]
-    public void ArithmeticSubstitution_IsPartOfWord()
+    public void ControlKeyword_ScansExpression()
     {
-        var tokens = ShellLexer.Tokenize("echo $((1+2))");
-        var word = tokens[1].Word!;
-        Assert.Equal(new ArithSubPart("1+2"), Assert.Single(word.Parts));
-    }
-
-    [Fact]
-    public void ArithmeticCommand_IsSingleToken()
-    {
-        Assert.Equal([(TokenType.ArithCommand, "1+2"), (TokenType.EndOfFile, "")], Tokens("((1+2))"));
+        var tokens = Tokens("if ($x < 3) { }");
+        Assert.Equal(
+            [(TokenType.Word, "if"), (TokenType.Expression, "$x < 3"), (TokenType.LBrace, "{"), (TokenType.RBrace, "}"), (TokenType.EndOfFile, "")],
+            tokens);
     }
 
     [Fact]

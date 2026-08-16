@@ -1,3 +1,5 @@
+using System.Text;
+using Serilog;
 using Valency.Shell.Scripting.Ast;
 using Valency.Shell.Scripting.Lexing;
 
@@ -5,14 +7,14 @@ namespace Valency.Shell.Scripting.Parsing;
 
 public sealed class IncompleteInputException : Exception
 {
-    public IncompleteInputException() : base("命令未完成") { }
+    public IncompleteInputException() : base(Resources.IncompleteInput) { }
 }
 
 public static class Parser
 {
-    public static Script Parse(string text)
+    public static Script Parse(string text, ILogger? logger = null)
     {
-        return new ParserImpl(ShellLexer.Tokenize(text)).ParseScript();
+        return new ParserImpl(ShellLexer.Tokenize(text, logger), logger).ParseScript();
     }
 
     public static bool IsIncomplete(string text)
@@ -35,9 +37,14 @@ public static class Parser
     private sealed class ParserImpl
     {
         private readonly IReadOnlyList<Token> _tokens;
+        private readonly ILogger? _logger;
         private int _pos;
 
-        public ParserImpl(IReadOnlyList<Token> tokens) => _tokens = tokens;
+        public ParserImpl(IReadOnlyList<Token> tokens, ILogger? logger)
+        {
+            _tokens = tokens;
+            _logger = logger?.ForContext("Src", "parser");
+        }
 
         private Token Current => _tokens[_pos];
         private Token Peek(int offset = 1)
@@ -54,62 +61,165 @@ public static class Parser
 
         public Script ParseScript()
         {
-            var body = ParseCompoundList(null);
+            var statements = ParseStatements();
             if (!AtEnd)
-                throw Error($"意外符号 '{Current.Text}'");
-            return new Script(body);
+                throw Error(string.Format(Resources.UnexpectedToken, Current.Text));
+            return new Script(statements);
         }
 
-        private CompoundList ParseCompoundList(IReadOnlySet<string>? stopWords)
+        private IReadOnlyList<Statement> ParseStatements()
         {
-            var entries = new List<Entry>();
-
+            var list = new List<Statement>();
             while (true)
             {
-                SkipListSeparators();
-                if (IsTerminator(stopWords))
+                SkipSeparators();
+                if (At(TokenType.RBrace) || AtEnd)
                     break;
-
-                var andOr = ParseAndOr();
-
-                var connector = Connector.None;
-                if (At(TokenType.Semi))
-                {
-                    connector = Connector.Semicolon;
-                    Advance();
-                }
-                else if (At(TokenType.Background))
-                {
-                    connector = Connector.Background;
-                    Advance();
-                }
-                else if (At(TokenType.Newline))
-                {
-                    connector = Connector.Newline;
-                    Advance();
-                }
-
-                entries.Add(new Entry(andOr, connector));
+                var before = _pos;
+                var statement = ParseStatement();
+                if (_pos == before)
+                    throw Error(string.Format(Resources.CannotParseToken, Current.Text));
+                _logger?.Verbose(Resources.LogParsedStatement, statement.GetType().Name);
+                list.Add(statement);
             }
-
-            return new CompoundList(entries);
+            return list;
         }
 
-        private void SkipListSeparators()
+        private void SkipSeparators()
         {
             while (At(TokenType.Newline) || At(TokenType.Semi))
                 Advance();
         }
 
-        private bool IsTerminator(IReadOnlySet<string>? stopWords)
+        private Statement ParseStatement()
         {
-            if (At(TokenType.EndOfFile) || At(TokenType.RParen) || At(TokenType.RBrace))
-                return true;
-            if (At(TokenType.Word) && stopWords is not null &&
-                stopWords.Contains(Current.Word!.Raw.ToLowerInvariant()))
-                return true;
-            return false;
+            if (At(TokenType.LBrace))
+                return ParseBlock();
+
+            if (At(TokenType.Word))
+            {
+                var raw = Current.Word!.Raw;
+                switch (raw)
+                {
+                    case "if": return ParseIf();
+                    case "while": return ParseWhile(until: false);
+                    case "until": return ParseWhile(until: true);
+                    case "for": return ParseFor();
+                    case "function": return ParseFunction();
+                    case "return": return ParseReturn();
+                    case "break":
+                        Advance();
+                        return new BreakStatement();
+                    case "continue":
+                        Advance();
+                        return new ContinueStatement();
+                }
+            }
+
+            return ParseCommandStatement();
         }
+
+        private BlockStatement ParseBlock()
+        {
+            Expect(TokenType.LBrace);
+            var statements = ParseStatements();
+            Expect(TokenType.RBrace);
+            return new BlockStatement(statements);
+        }
+
+        private Statement ParseIf()
+        {
+            Advance();
+            var condition = ExpectExpression();
+            var then = ParseBlock();
+            var elseIfs = new List<(string, BlockStatement)>();
+            BlockStatement? elseBlock = null;
+
+            while (CurrentWordIs("else"))
+            {
+                Advance();
+                if (CurrentWordIs("if"))
+                {
+                    Advance();
+                    var cond = ExpectExpression();
+                    var body = ParseBlock();
+                    elseIfs.Add((cond, body));
+                }
+                else
+                {
+                    elseBlock = ParseBlock();
+                    break;
+                }
+            }
+
+            return new IfStatement(condition, then, elseIfs, elseBlock);
+        }
+
+        private Statement ParseWhile(bool until)
+        {
+            Advance();
+            var condition = ExpectExpression();
+            var body = ParseBlock();
+            return new WhileStatement(condition, body, until);
+        }
+
+        private Statement ParseFor()
+        {
+            Advance();
+            var text = ExpectExpression();
+            var (init, cond, post) = SplitForParts(text);
+            var body = ParseBlock();
+            return new ForStatement(init, cond, post, body);
+        }
+
+        private Statement ParseFunction()
+        {
+            Advance();
+            var name = ExpectName();
+            Expect(TokenType.LParen);
+            var parameters = new List<string>();
+            while (!At(TokenType.RParen))
+            {
+                if (!At(TokenType.Word))
+                    throw Error(Resources.FunctionParamNeedsVariable);
+                var raw = Current.Word!.Raw.TrimEnd(',');
+                var paramName = StripDollar(raw);
+                if (!IsIdentifier(paramName))
+                    throw Error(string.Format(Resources.InvalidParameterName, raw));
+                parameters.Add(paramName);
+                Advance();
+            }
+            Expect(TokenType.RParen);
+            var body = ParseBlock();
+            return new FunctionDecl(name, parameters, body);
+        }
+
+        private Statement ParseReturn()
+        {
+            Advance();
+            var text = CollectExpressionText();
+            return new ReturnStatement(string.IsNullOrWhiteSpace(text) ? null : text);
+        }
+
+        private Statement ParseCommandStatement()
+        {
+            if (At(TokenType.Expression))
+                return new ExpressionStatement(Advance().Text);
+
+            if (At(TokenType.Word) && IsVariableWord(Current.Word!))
+                return new ExpressionStatement(CollectExpressionText());
+
+            var andOr = ParseAndOr();
+            var background = false;
+            if (At(TokenType.Background))
+            {
+                background = true;
+                Advance();
+            }
+            return new CommandStatement(andOr, background);
+        }
+
+        private static bool IsVariableWord(Word word) => word.Raw.StartsWith('$');
 
         private AndOr ParseAndOr()
         {
@@ -150,14 +260,12 @@ public static class Parser
             }
 
             var commands = new List<Command> { ParseCommand() };
-
             while (At(TokenType.Pipe))
             {
                 Advance();
                 SkipNewlines();
                 commands.Add(ParseCommand());
             }
-
             return new Pipeline(negate, commands);
         }
 
@@ -169,301 +277,25 @@ public static class Parser
 
         private Command ParseCommand()
         {
-            if (At(TokenType.ArithCommand))
-            {
-                var expr = Advance().Text;
-                return new ArithmeticCommand(expr);
-            }
-
-            if (At(TokenType.LBrace))
-                return ParseBraceGroup();
-
-            if (At(TokenType.LParen))
-                return ParseSubshell();
-
-            if (At(TokenType.Word))
-            {
-                var raw = Current.Word!.Raw;
-
-                if (raw.Equals("if", StringComparison.OrdinalIgnoreCase))
-                    return ParseIf();
-                if (raw.Equals("while", StringComparison.OrdinalIgnoreCase))
-                    return ParseWhile(until: false);
-                if (raw.Equals("until", StringComparison.OrdinalIgnoreCase))
-                    return ParseWhile(until: true);
-                if (raw.Equals("for", StringComparison.OrdinalIgnoreCase))
-                    return ParseFor();
-                if (raw.Equals("case", StringComparison.OrdinalIgnoreCase))
-                    return ParseCase();
-                if (raw.Equals("function", StringComparison.OrdinalIgnoreCase))
-                    return ParseFunctionKeyword();
-
-                if (IsIdentifier(raw) && Peek().Type == TokenType.LParen)
-                    return ParseFunctionDef();
-            }
-
-            return ParseSimpleCommand();
-        }
-
-        private Command ParseBraceGroup()
-        {
-            Expect(TokenType.LBrace);
-            var body = ParseCompoundList(new HashSet<string>());
-            Expect(TokenType.RBrace);
-            return new BraceGroup(body);
-        }
-
-        private Command ParseSubshell()
-        {
-            Expect(TokenType.LParen);
-            var body = ParseCompoundList(null);
-            Expect(TokenType.RParen);
-            return new Subshell(body);
-        }
-
-        private Command ParseFunctionKeyword()
-        {
-            ExpectWord("function");
-            var name = ExpectName();
-            if (At(TokenType.LParen))
-            {
-                Advance();
-                Expect(TokenType.RParen);
-            }
-            return new FunctionDef(name, ParseFunctionBody());
-        }
-
-        private Command ParseFunctionDef()
-        {
-            var name = Advance().Word!.Raw;
-            Expect(TokenType.LParen);
-            Expect(TokenType.RParen);
-            return new FunctionDef(name, ParseFunctionBody());
-        }
-
-        private Command ParseFunctionBody()
-        {
-            if (At(TokenType.LBrace))
-                return ParseBraceGroup();
-            if (At(TokenType.LParen))
-                return ParseSubshell();
-            if (At(TokenType.Word))
-            {
-                var raw = Current.Word!.Raw;
-                if (raw.Equals("if", StringComparison.OrdinalIgnoreCase))
-                    return ParseIf();
-                if (raw.Equals("while", StringComparison.OrdinalIgnoreCase))
-                    return ParseWhile(until: false);
-                if (raw.Equals("until", StringComparison.OrdinalIgnoreCase))
-                    return ParseWhile(until: true);
-                if (raw.Equals("for", StringComparison.OrdinalIgnoreCase))
-                    return ParseFor();
-                if (raw.Equals("case", StringComparison.OrdinalIgnoreCase))
-                    return ParseCase();
-            }
-            throw Error("函数体必须是复合命令（{ }、( ) 或 if/while/for/case）");
-        }
-
-        private Command ParseIf()
-        {
-            ExpectWord("if");
-            var branches = new List<Branch>();
-
-            var cond = ParseCompoundList(KeywordSet("then"));
-            ExpectWord("then");
-            var body = ParseCompoundList(KeywordSet("elif", "else", "fi"));
-            branches.Add(new Branch(cond, body));
-
-            while (CurrentWordIs("elif"))
-            {
-                Advance();
-                var c = ParseCompoundList(KeywordSet("then"));
-                ExpectWord("then");
-                var b = ParseCompoundList(KeywordSet("elif", "else", "fi"));
-                branches.Add(new Branch(c, b));
-            }
-
-            CompoundList? elseBody = null;
-            if (CurrentWordIs("else"))
-            {
-                Advance();
-                elseBody = ParseCompoundList(KeywordSet("fi"));
-            }
-
-            ExpectWord("fi");
-            return new IfCommand(branches, elseBody);
-        }
-
-        private Command ParseWhile(bool until)
-        {
-            Advance();
-            var cond = ParseCompoundList(KeywordSet("do"));
-            ExpectWord("do");
-            var body = ParseCompoundList(KeywordSet("done"));
-            ExpectWord("done");
-            return new WhileCommand(cond, body, until);
-        }
-
-        private Command ParseFor()
-        {
-            ExpectWord("for");
-            var variable = ExpectName();
-            IReadOnlyList<Word>? items = null;
-
-            if (CurrentWordIs("in"))
-            {
-                Advance();
-                var list = new List<Word>();
-                while (At(TokenType.Word) && !CurrentWordIs("do"))
-                {
-                    list.Add(Advance().Word!);
-                }
-                items = list;
-            }
-            else if (CurrentWordIs("do") || At(TokenType.Semi) || At(TokenType.Newline))
-            {
-                items = null;
-            }
-            else
-            {
-                throw Error("for 循环需要 in 或 do");
-            }
-
-            SkipListSeparators();
-            ExpectWord("do");
-            var body = ParseCompoundList(KeywordSet("done"));
-            ExpectWord("done");
-            return new ForInCommand(variable, items, body);
-        }
-
-        private Command ParseCase()
-        {
-            ExpectWord("case");
-            if (!At(TokenType.Word))
-                throw Error("case 需要一个匹配词");
-            var word = Advance().Word!;
-            ExpectWord("in");
-
-            var arms = new List<CaseArm>();
-            SkipNewlines();
-
-            while (!CurrentWordIs("esac"))
-            {
-                if (AtEnd)
-                    throw new IncompleteInputException();
-
-                var patterns = new List<Word>();
-                if (!At(TokenType.Word))
-                    throw Error("case 分支需要模式");
-
-                while (true)
-                {
-                    patterns.Add(Advance().Word!);
-                    if (At(TokenType.Pipe))
-                    {
-                        Advance();
-                        if (!At(TokenType.Word))
-                            throw Error("'|' 后需要模式");
-                        continue;
-                    }
-                    break;
-                }
-
-                Expect(TokenType.RParen);
-                var body = ParseCaseBody();
-                arms.Add(new CaseArm(patterns, body));
-                SkipNewlines();
-            }
-
-            ExpectWord("esac");
-            return new CaseCommand(word, arms);
-        }
-
-        private CompoundList ParseCaseBody()
-        {
-            var entries = new List<Entry>();
-            while (true)
-            {
-                if (At(TokenType.EndOfFile) || At(TokenType.RParen) || At(TokenType.RBrace))
-                    break;
-                if (CurrentWordIs("esac"))
-                    break;
-                if (At(TokenType.Semi) && Peek().Type == TokenType.Semi)
-                {
-                    Advance();
-                    Advance();
-                    break;
-                }
-
-                if (At(TokenType.Newline) || At(TokenType.Semi))
-                {
-                    Advance();
-                    continue;
-                }
-
-                var andOr = ParseAndOr();
-                var connector = Connector.None;
-                if (At(TokenType.Semi) && Peek().Type == TokenType.Semi)
-                {
-                    Advance();
-                    Advance();
-                    entries.Add(new Entry(andOr, Connector.Semicolon));
-                    break;
-                }
-                if (At(TokenType.Semi))
-                {
-                    connector = Connector.Semicolon;
-                    Advance();
-                }
-                else if (At(TokenType.Background))
-                {
-                    connector = Connector.Background;
-                    Advance();
-                }
-                else if (At(TokenType.Newline))
-                {
-                    connector = Connector.Newline;
-                    Advance();
-                }
-
-                entries.Add(new Entry(andOr, connector));
-            }
-
-            return new CompoundList(entries);
-        }
-
-        private Command ParseSimpleCommand()
-        {
-            var assignments = new List<Assignment>();
-            var redirections = new List<Redirection>();
+            var redirects = new List<Redirection>();
             var words = new List<Word>();
 
             while (true)
             {
                 if (At(TokenType.Word))
                 {
-                    var word = Current.Word!;
-                    if (words.Count == 0 && TrySplitAssignment(word, out var name, out var append, out var value))
-                    {
-                        assignments.Add(new Assignment(name, append, value));
-                        Advance();
-                        continue;
-                    }
-                    words.Add(word);
-                    Advance();
+                    words.Add(Advance().Word!);
                     continue;
                 }
-
                 if (IsRedirectToken(Current.Type))
                 {
-                    redirections.Add(ParseRedirect());
+                    redirects.Add(ParseRedirect());
                     continue;
                 }
-
                 break;
             }
 
-            return new SimpleCommand(assignments, redirections, words);
+            return new SimpleCommand(redirects, words);
         }
 
         private Redirection ParseRedirect()
@@ -481,15 +313,15 @@ public static class Parser
                 TokenType.DLessDash => RedirectionKind.HeredocDash,
                 TokenType.AndGreat => RedirectionKind.AndOutput,
                 TokenType.AndGreatAnd => RedirectionKind.AndAppend,
-                _ => throw Error($"未知重定向 '{token.Text}'"),
+                _ => throw Error(string.Format(Resources.UnknownRedirection, token.Text)),
             };
 
             if (kind is RedirectionKind.Heredoc or RedirectionKind.HeredocDash)
-                throw Error("here-doc 暂不支持");
+                throw Error(Resources.HeredocNotSupported);
 
             var fd = ParseFd(token.Text, kind);
             if (!At(TokenType.Word))
-                throw Error("重定向缺少目标");
+                throw Error(Resources.RedirectionMissingTarget);
             var target = Advance().Word!;
             return new Redirection(fd, kind, target);
         }
@@ -514,39 +346,101 @@ public static class Parser
             TokenType.LessAnd or TokenType.GreatAnd or TokenType.LessGreat or
             TokenType.DLess or TokenType.DLessDash or TokenType.AndGreat or TokenType.AndGreatAnd;
 
-        private static bool TrySplitAssignment(Word word, out string name, out bool append, out Word value)
+        private string ExpectExpression()
         {
-            name = string.Empty;
-            append = false;
-            value = Word.Empty;
+            if (!At(TokenType.Expression))
+                throw Error(Resources.ExpectedExpression);
+            return Advance().Text;
+        }
 
-            if (word.Parts.Count == 0 || word.Parts[0] is not LiteralPart { Quoted: false } first)
-                return false;
-
-            var text = first.Text;
-            var eq = text.IndexOf('=');
-            if (eq <= 0)
-                return false;
-
-            var nameCandidate = text[..eq];
-            if (nameCandidate.EndsWith('+'))
+        private string CollectExpressionText()
+        {
+            var parts = new List<string>();
+            while (true)
             {
-                nameCandidate = nameCandidate[..^1];
-                append = true;
+                if (At(TokenType.Word))
+                {
+                    parts.Add(Advance().Word!.Raw);
+                    continue;
+                }
+                if (At(TokenType.Expression))
+                {
+                    parts.Add(Advance().Text);
+                    continue;
+                }
+                break;
             }
+            return string.Join(' ', parts);
+        }
 
-            if (!IsIdentifier(nameCandidate))
-                return false;
+        private static (string? Init, string? Cond, string? Post) SplitForParts(string text)
+        {
+            var parts = SplitTopLevel(text, ';');
+            string? init = parts.Count > 0 ? TrimOrNull(parts[0]) : null;
+            string? cond = parts.Count > 1 ? TrimOrNull(parts[1]) : null;
+            string? post = parts.Count > 2 ? TrimOrNull(parts[2]) : null;
+            return (init, cond, post);
+        }
 
-            name = nameCandidate;
-            var valueParts = new List<WordPart>();
-            var rest = text[(eq + 1)..];
-            if (rest.Length > 0)
-                valueParts.Add(new LiteralPart(rest, false));
-            for (var i = 1; i < word.Parts.Count; i++)
-                valueParts.Add(word.Parts[i]);
-            value = new Word(valueParts);
-            return true;
+        private static List<string> SplitTopLevel(string text, char separator)
+        {
+            var result = new List<string>();
+            var sb = new StringBuilder();
+            var depth = 0;
+            var quote = '\0';
+            for (var i = 0; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (quote != '\0')
+                {
+                    sb.Append(c);
+                    if (c == quote)
+                        quote = '\0';
+                    continue;
+                }
+                if (c is '\'' or '"')
+                {
+                    quote = c;
+                    sb.Append(c);
+                    continue;
+                }
+                if (c == '(')
+                {
+                    depth++;
+                    sb.Append(c);
+                    continue;
+                }
+                if (c == ')')
+                {
+                    depth--;
+                    sb.Append(c);
+                    continue;
+                }
+                if (c == separator && depth == 0)
+                {
+                    result.Add(sb.ToString());
+                    sb.Clear();
+                    continue;
+                }
+                sb.Append(c);
+            }
+            result.Add(sb.ToString());
+            return result;
+        }
+
+        private static string? TrimOrNull(string text)
+        {
+            var trimmed = text.Trim();
+            return trimmed.Length == 0 ? null : trimmed;
+        }
+
+        private static string StripDollar(string raw)
+        {
+            if (raw.StartsWith('$'))
+                raw = raw[1..];
+            if (raw.StartsWith('{') && raw.EndsWith('}'))
+                raw = raw[1..^1];
+            return raw;
         }
 
         private static bool IsIdentifier(string text)
@@ -561,38 +455,23 @@ public static class Parser
             return true;
         }
 
-        private static HashSet<string> KeywordSet(params string[] words)
-        {
-            var set = new HashSet<string>();
-            foreach (var word in words)
-                set.Add(word.ToLowerInvariant());
-            return set;
-        }
-
         private string ExpectName()
         {
             if (!At(TokenType.Word) || !IsIdentifier(Current.Word!.Raw))
-                throw Error("需要标识符");
+                throw Error(Resources.ExpectedIdentifier);
             return Advance().Word!.Raw;
         }
 
         private bool CurrentWordIs(string word)
         {
             return At(TokenType.Word) &&
-                   Current.Word!.Raw.Equals(word, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private void ExpectWord(string word)
-        {
-            if (!CurrentWordIs(word))
-                throw Error($"需要 '{word}'");
-            Advance();
+                   Current.Word!.Raw.Equals(word, StringComparison.Ordinal);
         }
 
         private void Expect(TokenType type)
         {
             if (!At(type))
-                throw Error($"需要 '{type}'，实际为 '{Current.Text}'");
+                throw Error(string.Format(Resources.ExpectedToken, type, Current.Text));
             Advance();
         }
 

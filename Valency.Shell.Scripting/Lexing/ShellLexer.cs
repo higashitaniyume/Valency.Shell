@@ -1,4 +1,5 @@
 using System.Text;
+using Serilog;
 using Valency.Shell.Scripting.Ast;
 
 namespace Valency.Shell.Scripting.Lexing;
@@ -9,7 +10,7 @@ public sealed class SyntaxError : Exception
     public int Column { get; }
 
     public SyntaxError(string message, int line, int column)
-        : base($"{message}（第 {line} 行，第 {column} 列）")
+        : base(string.Format(Resources.SyntaxErrorLocation, message, line, column))
     {
         Line = line;
         Column = column;
@@ -18,7 +19,13 @@ public sealed class SyntaxError : Exception
 
 public static class ShellLexer
 {
-    public static IReadOnlyList<Token> Tokenize(string input) => new Lexer(input).Run();
+    public static IReadOnlyList<Token> Tokenize(string input, ILogger? logger = null)
+    {
+        var tokens = new Lexer(input).Run();
+        logger?.ForContext("Src", "lexer")
+            .Verbose(Resources.LogLexerTokens, string.Join(' ', tokens.Select(t => t.ToString())));
+        return tokens;
+    }
 
     private sealed class Lexer
     {
@@ -31,6 +38,7 @@ public static class ShellLexer
         private readonly StringBuilder _sb = new();
         private bool _inDoubleQuote;
         private bool _hasWord;
+        private bool _atStatementStart = true;
 
         public Lexer(string input) => _input = input;
 
@@ -50,6 +58,7 @@ public static class ShellLexer
                 {
                     EmitWord();
                     Emit(TokenType.Newline, "\n");
+                    _atStatementStart = true;
                     Advance();
                     continue;
                 }
@@ -62,8 +71,8 @@ public static class ShellLexer
 
                 if (char.IsWhiteSpace(c))
                 {
-                    EmitWord();
-                    Advance();
+                    if (!EmitWord())
+                        Advance();
                     continue;
                 }
 
@@ -129,7 +138,7 @@ public static class ShellLexer
 
             EmitWord();
             if (_inDoubleQuote)
-                throw new SyntaxError("双引号未闭合", _line, _col);
+                throw new SyntaxError(Resources.UnclosedDoubleQuote, _line, _col);
             Emit(TokenType.EndOfFile, "");
             return _tokens;
         }
@@ -172,10 +181,7 @@ public static class ShellLexer
             Advance();
             if (_i < _input.Length && _input[_i] == '(')
             {
-                if (_i + 1 < _input.Length && _input[_i + 1] == '(')
-                    ScanArithSub();
-                else
-                    ScanCommandSub();
+                ScanCommandSub();
                 return;
             }
 
@@ -232,29 +238,7 @@ public static class ShellLexer
                     Advance();
                 }
             }
-            throw new SyntaxError("命令替换 $(...) 未闭合", _line, _col);
-        }
-
-        private void ScanArithSub()
-        {
-            FlushLiteral();
-            Advance();
-            Advance();
-            var sb = new StringBuilder();
-            while (_i < _input.Length)
-            {
-                if (_input[_i] == ')' && _i + 1 < _input.Length && _input[_i + 1] == ')')
-                {
-                    Advance();
-                    Advance();
-                    _parts.Add(new ArithSubPart(sb.ToString()));
-                    _hasWord = true;
-                    return;
-                }
-                sb.Append(_input[_i]);
-                Advance();
-            }
-            throw new SyntaxError("算术展开 $((...)) 未闭合", _line, _col);
+            throw new SyntaxError(Resources.UnclosedCommandSubstitution, _line, _col);
         }
 
         private void ScanBacktick()
@@ -268,7 +252,7 @@ public static class ShellLexer
                 Advance();
             }
             if (_i >= _input.Length)
-                throw new SyntaxError("反引号未闭合", _line, _col);
+                throw new SyntaxError(Resources.UnclosedBacktick, _line, _col);
             Advance();
             _parts.Add(new CommandSubPart(sb.ToString()));
             _hasWord = true;
@@ -284,7 +268,7 @@ public static class ShellLexer
                 Advance();
             }
             if (_i >= _input.Length)
-                throw new SyntaxError("单引号未闭合", _line, _col);
+                throw new SyntaxError(Resources.UnclosedSingleQuote, _line, _col);
             Advance();
             _parts.Add(new SingleQuotedPart(sb.ToString()));
             _hasWord = true;
@@ -298,6 +282,7 @@ public static class ShellLexer
                 case ';':
                     EmitWord();
                     EmitSimple(TokenType.Semi, ";");
+                    _atStatementStart = true;
                     break;
 
                 case '&':
@@ -419,12 +404,6 @@ public static class ShellLexer
 
         private void HandleLParen()
         {
-            if (AtWordStart() && _i + 1 < _input.Length && _input[_i + 1] == '(')
-            {
-                ScanArithCommand();
-                return;
-            }
-
             if (_sb.Length > 0 && _parts.Count == 0 && IsValidName(_sb))
             {
                 EmitWord();
@@ -451,60 +430,29 @@ public static class ShellLexer
         private void HandleLBrace()
         {
             if (AtWordStart())
+            {
                 EmitSimple(TokenType.LBrace, "{");
+                _atStatementStart = true;
+            }
             else
+            {
                 AppendLiteral('{');
+            }
             Advance();
         }
 
         private void HandleRBrace()
         {
             if (AtWordStart())
-                EmitSimple(TokenType.RBrace, "}");
-            else
-                AppendLiteral('}');
-            Advance();
-        }
-
-        private void ScanArithCommand()
-        {
-            Advance();
-            Advance();
-            var depth = 0;
-            var sb = new StringBuilder();
-            while (_i < _input.Length)
             {
-                var c = _input[_i];
-                if (c == '(')
-                {
-                    depth++;
-                    sb.Append(c);
-                    Advance();
-                }
-                else if (c == ')')
-                {
-                    if (depth == 0)
-                    {
-                        if (_i + 1 < _input.Length && _input[_i + 1] == ')')
-                        {
-                            Advance();
-                            Advance();
-                            EmitSimple(TokenType.ArithCommand, sb.ToString());
-                            return;
-                        }
-                        throw new SyntaxError("算术命令 ((...)) 未闭合", _line, _col);
-                    }
-                    depth--;
-                    sb.Append(c);
-                    Advance();
-                }
-                else
-                {
-                    sb.Append(c);
-                    Advance();
-                }
+                EmitSimple(TokenType.RBrace, "}");
+                _atStatementStart = true;
             }
-            throw new SyntaxError("算术命令 ((...)) 未闭合", _line, _col);
+            else
+            {
+                AppendLiteral('}');
+            }
+            Advance();
         }
 
         private void SkipToLineEnd()
@@ -559,26 +507,173 @@ public static class ShellLexer
             }
         }
 
-        private void EmitWord()
+        private bool EmitWord()
         {
             FlushLiteral();
             if (_parts.Count > 0 || _hasWord)
             {
                 var word = new Word(_parts.ToArray());
-                _tokens.Add(new Token(TokenType.Word, word.Raw, _line, _col, word));
                 _parts.Clear();
                 _hasWord = false;
+
+                if (IsControlKeyword(word))
+                {
+                    _tokens.Add(new Token(TokenType.Word, word.Raw, _line, _col, word));
+                    if (ScanKeywordExpression())
+                        return true;
+                    _atStatementStart = false;
+                    return false;
+                }
+
+                if (_atStatementStart && word.Raw.StartsWith('$'))
+                {
+                    ScanStatementExpression(word.Raw);
+                    return true;
+                }
+
+                _tokens.Add(new Token(TokenType.Word, word.Raw, _line, _col, word));
+                _atStatementStart = false;
             }
+            return false;
+        }
+
+        private void ScanStatementExpression(string prefix)
+        {
+            var sb = new StringBuilder(prefix);
+            while (_i < _input.Length)
+            {
+                var c = _input[_i];
+                if (c is '\n' or ';' or '{' or '}' or '|' or '&')
+                    break;
+
+                if (c is '\'' or '"')
+                {
+                    var quote = c;
+                    sb.Append(c);
+                    Advance();
+                    while (_i < _input.Length && _input[_i] != quote)
+                    {
+                        sb.Append(_input[_i]);
+                        Advance();
+                    }
+                    if (_i < _input.Length)
+                    {
+                        sb.Append(_input[_i]);
+                        Advance();
+                    }
+                    continue;
+                }
+
+                if (c == '$' && _i + 1 < _input.Length && _input[_i + 1] == '(')
+                {
+                    sb.Append('$');
+                    sb.Append('(');
+                    Advance();
+                    Advance();
+                    var depth = 1;
+                    while (_i < _input.Length && depth > 0)
+                    {
+                        var ch = _input[_i];
+                        if (ch == '(')
+                            depth++;
+                        else if (ch == ')')
+                            depth--;
+                        sb.Append(ch);
+                        Advance();
+                    }
+                    continue;
+                }
+
+                sb.Append(c);
+                Advance();
+            }
+
+            _tokens.Add(new Token(TokenType.Expression, sb.ToString().Trim(), _line, _col));
+        }
+
+        private static bool IsControlKeyword(Word word)
+        {
+            return word.Parts.Count == 1 &&
+                   word.Parts[0] is LiteralPart { Quoted: false } lit &&
+                   (lit.Text == "if" || lit.Text == "while" || lit.Text == "until" || lit.Text == "for");
+        }
+
+        private bool ScanKeywordExpression()
+        {
+            var save = _i;
+            while (_i < _input.Length && char.IsWhiteSpace(_input[_i]) && _input[_i] != '\n')
+                Advance();
+            if (_i >= _input.Length || _input[_i] != '(')
+            {
+                _i = save;
+                return false;
+            }
+
+            var sb = new StringBuilder();
+            ScanBalancedExpression(sb);
+            _tokens.Add(new Token(TokenType.Expression, sb.ToString(), _line, _col));
+            return true;
+        }
+
+        private void ScanBalancedExpression(StringBuilder sb)
+        {
+            Advance();
+            var depth = 1;
+            while (_i < _input.Length)
+            {
+                var c = _input[_i];
+                if (c == '(')
+                {
+                    depth++;
+                    sb.Append(c);
+                    Advance();
+                }
+                else if (c == ')')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        Advance();
+                        return;
+                    }
+                    sb.Append(c);
+                    Advance();
+                }
+                else if (c is '\'' or '"')
+                {
+                    var quote = c;
+                    sb.Append(c);
+                    Advance();
+                    while (_i < _input.Length && _input[_i] != quote)
+                    {
+                        sb.Append(_input[_i]);
+                        Advance();
+                    }
+                    if (_i < _input.Length)
+                    {
+                        sb.Append(_input[_i]);
+                        Advance();
+                    }
+                }
+                else
+                {
+                    sb.Append(c);
+                    Advance();
+                }
+            }
+            throw new SyntaxError(Resources.UnclosedExpressionParen, _line, _col);
         }
 
         private void EmitSimple(TokenType type, string text)
         {
             _tokens.Add(new Token(type, text, _line, _col));
+            _atStatementStart = false;
         }
 
         private void Emit(TokenType type, string text)
         {
             _tokens.Add(new Token(type, text, _line, _col));
+            _atStatementStart = false;
         }
 
         private void Advance()
