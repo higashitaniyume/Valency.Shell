@@ -2,13 +2,17 @@
 
 一个用 C# / .NET 9 编写的跨平台命令行 shell，支持 Windows、Linux 和 macOS（包括纯终端环境如 Debian 服务器、Android Termux）。
 
-除了交互式 shell，它内建一个**完整的 Lua 解释器**（基于 [MoonSharp](https://www.moonsharp.org/)，纯 C# 实现，无原生依赖）：闭包、元表、协程、变参、多返回值、`string`/`math`/`table`/`os` 标准库一应俱全，任何合法 Lua 程序都能直接运行。命令以**函数调用**的形式融入 Lua：`git("status")`、`capture("ls")`、`pipe(...)`。
+除了交互式 shell，它内建一个**完整的 Lua 解释器**（基于 [MoonSharp](https://www.moonsharp.org/)，纯 C# 实现，无原生依赖）：闭包、元表、协程、变参、多返回值、`string`/`math`/`table`/`os` 标准库一应俱全，任何合法 Lua 程序都能直接运行；`require()` 可加载纯 Lua 库（penlight 等）。
+
+命令以**函数调用**的形式融入 Lua：`git("status")`、`capture("ls")`、`pipe(...)`；核心命令更有**对象化形态**——`ls()` 返回结构化 table、可链式处理（`:filter():map():sort()`）、REPL 自动渲染，仿 PowerShell 的对象管道而对象完全是 Lua 值。
 
 ## 特性
 
 - **交互式行编辑**：仿 PowerShell/PSReadLine —— 历史记录（↑/↓）、行内编辑、`Ctrl+A/E/U/K/W`、`Ctrl+L` 清屏、`Ctrl+C` 取消当前行、`Ctrl+D` 空行退出
 - **完整 Lua 脚本**：MoonSharp 驱动，语言即标准 Lua；REPL 单表达式自动回显结果
 - **命令即函数**：`git("status", "-s")` 直接调用任意 PATH 可执行文件或内置命令（零注册的全局代理）；`run` / `capture` / `pipe` / `spawn` / `glob` 等 shell API
+- **对象化命令**：`ls()`/`grep()`/`jobs()` 等返回结构化 Lua table，方法链处理，表格自动渲染（仿 Format-Table/List）
+- **Lua 生态**：`require()` 加载纯 Lua 库（`~/.valency/lua`、`VALENCY_LUA_PATH`）
 - **Tab 补全**：调用位置补全命令/函数名（补全后自动带 `(`），字符串里补全路径；多候选先补全到最长公共前缀，再按 Tab 循环
 - **语法高亮**：Lua 关键字（青）、字符串（黄）、注释（绿）、调用位置（合法命令蓝/未知红）
 - **可配置提示符**：默认单行 `user@dir#`，可选 Kali 风格双行；支持 `$USER` `$HOST` `$PWD` `$SHARP` 等变量自定义模板，内置 ANSI 配色
@@ -61,6 +65,51 @@ run("make", "-j4")             -- 显式调用，返回退出码
 ```
 
 未定义的全局名如果能解析为内置命令或 PATH 可执行文件，会自动得到一个命令代理函数——无需注册即可调用；其余名字保持 `nil`。
+
+### 对象化 API：命令返回 Lua table
+
+仿 PowerShell 的对象管道——命令返回**结构化 Lua 值**，REPL 自动渲染（同构 table 数组对齐成表格、单 table 按键值列出），`echo()` 也会渲染：
+
+```lua
+ls("src")                       -- {{name=.., path=.., size=.., is_dir=.., mtime=..}, ...}
+cat("a.txt")                    -- string
+lines("a.log")                  -- {"line1", ...}
+grep("error", lines("a.log"))   -- 匹配行数组
+writefile("out.txt", "data")    -- true；第三个参数 append=true 追加
+jobs()                          -- {{id=1, pid=10892, cmd="make", state="running"}, ...}
+```
+
+### 方法链：PS 管道的对应物
+
+命令返回的数组 table 可以链式处理，返回值仍是普通 table（`ipairs`/`#` 照常）：
+
+```lua
+ls("src")
+  :filter(function(e) return not e.is_dir end)
+  :map(function(e) return e.name end)
+  :sort()
+  :echo()                       -- 渲染输出，终结链（类似 Out-Host）
+
+grep("error", lines("app.log"))
+  :reverse()
+  :take(10)
+  :echo()
+
+ls():sort(function(a, b) return a.mtime > b.mtime end)  -- 自定义比较器
+```
+
+可用链：`:filter(pred)`、`:map(fn)`（丢弃 nil 结果）、`:sort([cmp])`、`:reverse()`、`:take(n)`、`:echo()`。
+
+### Lua 生态：require 纯 Lua 库
+
+`require()` 从以下路径解析模块（`?` 占位）：当前目录 `./?.lua`、`./?/init.lua`，用户库目录 `~/.valency/lua/`；环境变量 `VALENCY_LUA_PATH`（分号分隔）可追加。penlight、middleclass 等纯 Lua 库放进去即可使用：
+
+```lua
+local strx = require("pl.stringx")
+local class = require("middleclass")
+```
+
+注：宿主为 MoonSharp（纯 C# 实现），**C 扩展库**（lfs/lpeg/luasocket 等）不可用——文件系统等能力由上面对象化 API 承担。
 
 ### 管道与重定向
 
@@ -173,7 +222,7 @@ export VALENCY_PROMPT_FORMAT='[$USER@$PWD] '
 ```
 Valency.Shell.slnx
 ├── Valency.Shell.Core/       纯逻辑：路径解析、补全、高亮、内置命令名
-├── Valency.Shell.Scripting/  Lua 语言层：LuaShell + shell API（MoonSharp）、glob
+├── Valency.Shell.Scripting/  Lua 语言层：LuaShell + shell/对象 API + 渲染器 + 方法链（MoonSharp）、glob
 ├── Valency.Shell.Engine/     进程执行：Run / RunPipeline / 捕获 / 后台作业
 ├── Valency.Shell/            Host：REPL、行编辑器、内置命令、提示符、日志
 ├── Valency.Shell.LogViewer/  日志查看器

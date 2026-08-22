@@ -70,5 +70,16 @@ env.VALENCY_DEMO = nil
 -- 上一条命令的退出码
 echo("status = " .. status())
 
+-- 对象化 API：命令返回结构化 table，REPL 自动渲染；脚本里用 :echo() 输出
+ls(".")
+	:filter(function(e) return not e.is_dir end)
+	:map(function(e) return e.name end)
+	:sort()
+	:echo()
+
+writefile("demo-tmp.txt", "alpha\nbravo\ncharlie\n")
+grep("l", lines("demo-tmp.txt")):echo()   -- alpha / charlie
+run("cmd", "/c", "del", "demo-tmp.txt")
+
 -- 显式退出
 exit(0)

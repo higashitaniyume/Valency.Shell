@@ -11,7 +11,8 @@ C# / .NET 9 跨平台命令行 shell，内建**完整 Lua 解释器**（MoonShar
 ```
 Valency.Shell.Core/       纯逻辑：PathResolver、Highlighter(Lua 规则)、CompletionEngine(调用位置)、BuiltinNames
                           （VariableExpander/IVariableSource 仅提示符模板在用）
-Valency.Shell.Scripting/  Lua 语言层：Lua/LuaShell + ILuaHost + LuaMarshaling + Api；Expansion/GlobExpander(glob)
+Valency.Shell.Scripting/  Lua 语言层：Lua/LuaShell + ILuaHost + LuaMarshaling + ObjectApi(对象化命令)
+                          + LuaRenderer(表格渲染) + LuaQuery(方法链)；Expansion/GlobExpander(glob)
 Valency.Shell.Engine/     进程执行：ProcessRunner（外部进程、管道、捕获、重定向、后台作业）
 Valency.Shell/            Host：Shell(实现 IShellContext+ILuaHost)、LineEditor、Builtins、Prompting、Logging
 Valency.Shell.LogViewer/  日志查看器
@@ -28,6 +29,11 @@ Valency.Shell.Tests/      xUnit，按 Core/Scripting/Builtins/Engine/Host 分文
 - **shell 变量 = Lua 全局**；`export/unset/read` 内置经 IShellContext 桥到 Lua 全局 + `Environment`。
 - **管道限制**：中间阶段必须是外部进程；内置命令只能做最后一个 stage（其输出经 `PipelineInput` 注入）。
 - **capture 实现分叉**：内置/脚本走 `Console.SetOut/Error` 换流；外部进程走 `ProcessRunner.RunPipelineCaptured`。
+- **对象化 API（ObjectApi）**：`ls/cat/lines/writefile/grep/jobs` 返回**纯 Lua 值**（table/string），红线是不向 Lua 泄漏 CLR 对象；相对路径以 `ILuaHost.CurrentDirectory` 为基准并支持 `~`。
+- **方法链（LuaQuery）**：给返回 table 挂共享 metatable（`__index` → 方法表：filter/map/sort/reverse/take/echo）；对象仍是普通 table。`:echo()` 返回 nil（仿 Out-Host，防 REPL 二次回显）；`map` 丢弃 nil 保持数组稠密。
+- **渲染器（LuaRenderer）**：同构 table 数组→对齐表格（数字列右对齐，单元格 48 字符/100 行截断）、单 map→key : value、标量数组→逐行；REPL 回显与原生 `echo()` 都走它。
+- **echo 双形态**：原生 `echo(...)` 全局函数渲染参数（遮蔽命令代理）；argv 形态 `run("echo", ...)` 仍走内置命令。
+- **require/生态**：`FileSystemScriptLoader`，模块路径 `./?.lua`、`./?/init.lua`、`~/.valency/lua/...`、`VALENCY_LUA_PATH`（分号分隔，无 `?` 自动补 `/?.lua`）；**C 扩展库（lfs/lpeg/luasocket）不可用**（MoonSharp 纯托管），文件系统能力由对象 API 承担。
 
 ## i18n
 
@@ -54,15 +60,17 @@ Valency.Shell.Tests/      xUnit，按 Core/Scripting/Builtins/Engine/Host 分文
 6. **内置命令写死 `Console.Out/Error`**，capture 靠换流实现——改内置命令时别引入别的输出通道。
 7. **`exit` 内置不再抛异常**（ControlFlow 契约已删）：它只 `RequestExit`，Lua 层靠 ExitRequested 中止 chunk。
 8. **`#args` 只数 1..n**（Lua 数组部分），`args[0]` 是字符串键单独存。
+9. **metatable 的方法必须挂在 `__index` 下**（函数或 table），直接放在 metatable 上的键不会被缺键查找命中——方法链第一版踩过（`attempt to call a nil value`）。
+10. **`DynValue` 无公共构造器**：包装现成 `Table` 用 `DynValue.NewTable(script)` 再 `.Table` 取回，保留外层 DynValue 供 `meta.Set("__index", value)` 使用。
 
 ## 构建 / 测试
 
 ```bash
 dotnet build
-dotnet test   # xUnit，111 个测试
+dotnet test   # xUnit，131 个测试
 dotnet run --project Valency.Shell                # 交互 REPL
 dotnet run --project Valency.Shell -- sample/demo.lua a b
-dotnet run --project Valency.Shell -- -c 'echo(table.concat(glob("*.md"), "|"))'
+dotnet run --project Valency.Shell -- -c 'ls():filter(function(e) return e.is_dir end):echo()'
 ```
 
 ## 环境注意
