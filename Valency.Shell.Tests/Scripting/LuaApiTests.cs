@@ -11,13 +11,13 @@ internal sealed class FakeLuaHost : ILuaHost
     public List<string[]> PipelineStages { get; } = [];
     public List<string> SpawnCalls { get; } = [];
     public List<string> ProbedCommands { get; } = [];
-    public List<string> PrintedJobs { get; } = [];
 
     public int NextRunCode { get; set; }
     public string NextCaptureOutput { get; set; } = "captured";
     public int NextCaptureCode { get; set; }
     public int NextPipelineCode { get; set; }
     public int? NextSpawnId { get; set; } = 7;
+    public List<LuaJob> Jobs { get; } = [];
     public ISet<string> AvailableCommands { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "echo", "git", "cmd",
@@ -59,7 +59,7 @@ internal sealed class FakeLuaHost : ILuaHost
         return NextSpawnId;
     }
 
-    public void PrintJobs() => PrintedJobs.Add("jobs");
+    public IReadOnlyList<LuaJob> GetJobs() => Jobs;
 
     public bool IsCommandAvailable(string name)
     {
@@ -218,14 +218,104 @@ public class LuaApiTests
     }
 
     [Fact]
-    public void Jobs_DelegatesToHost()
+    public void Jobs_ReturnsStructuredTable()
     {
         var host = new FakeLuaHost();
+        host.Jobs.Add(new LuaJob(1, 10892, "make", "running"));
         var shell = new LuaShell(host);
 
-        shell.Execute("jobs()");
+        shell.Execute("j = jobs() jid = j[1].id cmd = j[1].cmd state = j[1].state");
 
-        Assert.Equal("jobs", host.PrintedJobs.Single());
+        Assert.Equal(1.0, shell.GetGlobal("jid")!.Number);
+        Assert.Equal("make", shell.GetGlobal("cmd")!.String);
+        Assert.Equal("running", shell.GetGlobal("state")!.String);
+    }
+
+    // ---- 对象 API：ls / cat / lines / writefile / grep ----
+
+    private sealed class TempWorkDir : IDisposable
+    {
+        public string Dir { get; } = Path.Combine(Path.GetTempPath(), "valency-obj-" + Guid.NewGuid().ToString("N"));
+
+        public TempWorkDir() => Directory.CreateDirectory(Dir);
+
+        public void Dispose() => Directory.Delete(Dir, recursive: true);
+    }
+
+    [Fact]
+    public void Ls_ReturnsStructuredEntries()
+    {
+        using var dir = new TempWorkDir();
+        Directory.CreateDirectory(Path.Combine(dir.Dir, "sub"));
+        File.WriteAllText(Path.Combine(dir.Dir, "a.txt"), "hello");
+        var host = new FakeLuaHost { WorkingDirectory = dir.Dir };
+        var shell = new LuaShell(host);
+
+        shell.Execute("""
+            entries = ls()
+            n = #entries
+            first_name = entries[1].name
+            first_is_dir = entries[1].is_dir
+            file_entry = entries[2]
+            file_size = file_entry.size
+            """);
+
+        Assert.Equal(2.0, shell.GetGlobal("n")!.Number);
+        Assert.Equal("sub", shell.GetGlobal("first_name")!.String); // 目录排前
+        Assert.True(shell.GetGlobal("first_is_dir")!.Boolean);
+        Assert.Equal("a.txt", shell.GetGlobal("file_entry")!.Table.Get("name").String);
+        Assert.Equal(5.0, shell.GetGlobal("file_size")!.Number);
+    }
+
+    [Fact]
+    public void Ls_MissingDirectory_FailsAsRuntimeError()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+        var error = CaptureError(() => Assert.Equal(1, shell.Execute("ls('Z:/no/such/dir')")));
+        Assert.NotEmpty(error);
+    }
+
+    [Fact]
+    public void Cat_Lines_Writefile_RoundTrip()
+    {
+        using var dir = new TempWorkDir();
+        var host = new FakeLuaHost { WorkingDirectory = dir.Dir };
+        var shell = new LuaShell(host);
+        var path = (dir.Dir + "/notes.txt").Replace('\\', '/');
+
+        shell.Execute($"""
+            ok = writefile("{path}", "one\ntwo\nthree")
+            text = cat("{path}")
+            l = lines("{path}")
+            count = #l
+            second = l[2]
+            """);
+
+        Assert.True(shell.GetGlobal("ok")!.Boolean);
+        Assert.Equal("one\ntwo\nthree", shell.GetGlobal("text")!.String);
+        Assert.Equal(3.0, shell.GetGlobal("count")!.Number);
+        Assert.Equal("two", shell.GetGlobal("second")!.String);
+    }
+
+    [Fact]
+    public void Grep_ObjectVersion_FiltersLines()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        shell.Execute("m = grep('er', {'one', 'two er', 'error three'}) n = #m first = m[1]");
+
+        Assert.Equal(2.0, shell.GetGlobal("n")!.Number);
+        Assert.Equal("two er", shell.GetGlobal("first")!.String);
+    }
+
+    [Fact]
+    public void Grep_AcceptsMultilineString()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        shell.Execute("m = grep('x', 'a x\\nb\\nc x') n = #m");
+
+        Assert.Equal(2.0, shell.GetGlobal("n")!.Number);
     }
 
     [Fact]

@@ -12,6 +12,9 @@ public readonly record struct LuaRedirect(int Fd, LuaRedirectMode Mode, string T
 
 public readonly record struct CaptureResult(string Output, int ExitCode);
 
+/// <summary>A background job as seen by the Lua layer (plain data, no CLR objects leak into Lua).</summary>
+public sealed record LuaJob(int Id, int Pid, string Command, string State);
+
 /// <summary>
 ///     The operations the Lua layer needs from the host process. Implemented by <c>Shell</c>.
 /// </summary>
@@ -32,7 +35,8 @@ public interface ILuaHost
     /// <summary>Starts a background job; returns its job id, or null when it could not start.</summary>
     int? Spawn(IReadOnlyList<string> argv);
 
-    void PrintJobs();
+    /// <summary>Snapshot of tracked background jobs for the object-mode jobs() function.</summary>
+    IReadOnlyList<LuaJob> GetJobs();
 
     /// <summary>True when the name resolves to a builtin, script file or PATH executable.</summary>
     bool IsCommandAvailable(string name);

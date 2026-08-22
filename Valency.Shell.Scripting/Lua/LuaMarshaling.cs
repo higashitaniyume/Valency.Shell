@@ -124,6 +124,9 @@ internal static class Errors
     public static ScriptRuntimeException MissingCommand()
         => new(Resources.LuaMissingCommand);
 
+    public static ScriptRuntimeException ArgString(string name)
+        => new(string.Format(Resources.LuaArgString, name));
+
     public static ScriptRuntimeException UnknownOptionKey(string key)
         => new(string.Format(Resources.LuaUnknownOptionKey, key));
 

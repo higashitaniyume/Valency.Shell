@@ -15,6 +15,21 @@
   <data name="LuaArgNotString" xml:space="preserve">
     <value>Argument {0} (type {1}) cannot be passed to a command; use a string, number or array of strings</value>
   </data>
+  <data name="LuaArgString" xml:space="preserve">
+    <value>Argument {0} must be a string</value>
+  </data>
+  <data name="LuaFileNotFound" xml:space="preserve">
+    <value>File not found: {0}</value>
+  </data>
+  <data name="LuaDirNotFound" xml:space="preserve">
+    <value>Directory not found: {0}</value>
+  </data>
+  <data name="LuaIoError" xml:space="preserve">
+    <value>IO error: {0}</value>
+  </data>
+  <data name="LuaGrepSource" xml:space="preserve">
+    <value>grep source must be a string or an array of strings</value>
+  </data>
   <data name="LuaMissingCommand" xml:space="preserve">
     <value>Missing command name</value>
   </data>

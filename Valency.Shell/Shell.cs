@@ -304,6 +304,16 @@ public sealed class Shell : IShellContext, ILuaHost
 			|| PathResolver.Resolve(name, _currentDirectory) is not null;
 	}
 
+	public IReadOnlyList<LuaJob> GetJobs()
+	{
+		lock (_jobs)
+		{
+			return _jobs
+				.Select(j => new LuaJob(j.Id, j.Process.Id, j.Command, j.State.ToString().ToLowerInvariant()))
+				.ToList();
+		}
+	}
+
 	private bool IsScriptFile(string command)
 	{
 		var fullPath = Path.GetFullPath(command, _currentDirectory);

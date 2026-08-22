@@ -195,10 +195,10 @@ public sealed class LuaShell
         globals.Set("capture", DynValue.NewCallback(new CallbackFunction(CaptureCallback, "capture")));
         globals.Set("pipe", DynValue.NewCallback(new CallbackFunction(PipeCallback, "pipe")));
         globals.Set("spawn", DynValue.NewCallback(new CallbackFunction(SpawnCallback, "spawn")));
-        globals.Set("jobs", DynValue.NewCallback(new CallbackFunction(JobsCallback, "jobs")));
         globals.Set("glob", DynValue.NewCallback(new CallbackFunction(GlobCallback, "glob")));
         globals.Set("exit", DynValue.NewCallback(new CallbackFunction(ExitCallback, "exit")));
         globals.Set("status", DynValue.NewCallback(new CallbackFunction(StatusCallback, "status")));
+        ObjectApi.Register(_script, _host);
         RegisterEnvTable();
         RegisterCommandProxy();
     }
@@ -286,12 +286,6 @@ public sealed class LuaShell
         ThrowIfExitRequested();
         _suppressEcho = true;
         return jobId is null ? DynValue.Nil : DynValue.NewNumber(jobId.Value);
-    }
-
-    private DynValue JobsCallback(ScriptExecutionContext ctx, CallbackArguments args)
-    {
-        _host.PrintJobs();
-        return DynValue.Nil;
     }
 
     private static DynValue GlobCallback(ScriptExecutionContext ctx, CallbackArguments args)
