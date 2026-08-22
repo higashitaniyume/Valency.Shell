@@ -15,6 +15,7 @@ internal static class Resources
 	internal static string LuaDirNotFound => Get("LuaDirNotFound");
 	internal static string LuaIoError => Get("LuaIoError");
 	internal static string LuaGrepSource => Get("LuaGrepSource");
+	internal static string LuaMoreRows => Get("LuaMoreRows");
 	internal static string LuaMissingCommand => Get("LuaMissingCommand");
 	internal static string LuaUnknownOptionKey => Get("LuaUnknownOptionKey");
 	internal static string LuaOptionValueString => Get("LuaOptionValueString");

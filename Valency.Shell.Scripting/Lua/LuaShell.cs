@@ -178,12 +178,9 @@ public sealed class LuaShell
         if (result.IsNil())
             return;
 
-        var parts = result.Type == DataType.Tuple
-            ? result.Tuple.Where(v => !v.IsNil()).Select(v => v.ToPrintString()).ToArray()
-            : [result.ToPrintString()];
-        var line = string.Join("\t", parts);
-        if (line.Length > 0)
-            Console.Out.WriteLine(line);
+        var text = LuaRenderer.Render(result);
+        if (text.Length > 0)
+            Console.Out.WriteLine(text);
     }
 
     // ---- API registration ----
@@ -198,9 +195,26 @@ public sealed class LuaShell
         globals.Set("glob", DynValue.NewCallback(new CallbackFunction(GlobCallback, "glob")));
         globals.Set("exit", DynValue.NewCallback(new CallbackFunction(ExitCallback, "exit")));
         globals.Set("status", DynValue.NewCallback(new CallbackFunction(StatusCallback, "status")));
+        // 原生 echo：参数经 LuaRenderer 渲染（echo(ls()) 打印表格）；覆盖命令代理
+        globals.Set("echo", DynValue.NewCallback(new CallbackFunction(EchoCallback, "echo")));
         ObjectApi.Register(_script, _host);
         RegisterEnvTable();
         RegisterCommandProxy();
+    }
+
+    private static DynValue EchoCallback(ScriptExecutionContext ctx, CallbackArguments args)
+    {
+        var parts = new List<string>();
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i].IsNil())
+                continue;
+            var rendered = LuaRenderer.Render(args[i]);
+            if (rendered.Length > 0)
+                parts.Add(rendered);
+        }
+        Console.Out.WriteLine(string.Join(" ", parts));
+        return DynValue.Nil;
     }
 
     private DynValue RunCallback(ScriptExecutionContext ctx, CallbackArguments args)

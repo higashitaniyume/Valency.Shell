@@ -30,6 +30,9 @@
   <data name="LuaGrepSource" xml:space="preserve">
     <value>grep source must be a string or an array of strings</value>
   </data>
+  <data name="LuaMoreRows" xml:space="preserve">
+    <value>… first {0} rows shown</value>
+  </data>
   <data name="LuaMissingCommand" xml:space="preserve">
     <value>Missing command name</value>
   </data>

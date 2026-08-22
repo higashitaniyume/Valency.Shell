@@ -318,6 +318,86 @@ public class LuaApiTests
         Assert.Equal(2.0, shell.GetGlobal("n")!.Number);
     }
 
+    // ---- 渲染器（REPL 回显 / echo 渲染） ----
+
+    [Fact]
+    public void Echo_ArrayOfTables_RendersAlignedGrid()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        var output = CaptureOutput(() => shell.Execute("""
+            echo({ { name = "ab", size = 1 }, { name = "cdef", size = 22 } })
+            """));
+
+        var lines = output.Split("\r\n");
+        Assert.Contains("name  size", lines);    // 列宽由最宽内容（含表头）决定，列间两空格
+        Assert.Contains("ab       1", lines);    // 数字列右对齐
+        Assert.Contains("cdef    22", lines);
+    }
+
+    [Fact]
+    public void Echo_MapTable_RendersKeyValueList()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        var output = CaptureOutput(() => shell.Execute("echo({ name = 'valency', n = 2 })"));
+
+        Assert.Contains("name : valency", output);
+        Assert.Contains("n    : 2", output);
+    }
+
+    [Fact]
+    public void Echo_ScalarArray_RendersOnePerLine()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        var output = CaptureOutput(() => shell.Execute("echo({'a', 'b'})"));
+
+        Assert.Equal($"a{Environment.NewLine}b{Environment.NewLine}", output);
+    }
+
+    [Fact]
+    public void ReplEcho_Ls_RendersTableWithHeader()
+    {
+        using var dir = new TempWorkDir();
+        File.WriteAllText(Path.Combine(dir.Dir, "only.txt"), "x");
+        var host = new FakeLuaHost { WorkingDirectory = dir.Dir };
+        var shell = new LuaShell(host);
+
+        var output = CaptureOutput(() => shell.Execute("ls()"));
+
+        Assert.Contains("name", output);
+        Assert.Contains("only.txt", output);
+        Assert.Contains("is_dir", output);
+    }
+
+    [Fact]
+    public void Renderer_CapsRows()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+        var sb = new System.Text.StringBuilder();
+        sb.Append("t = {");
+        for (var i = 1; i <= 105; i++)
+        {
+            if (i > 1) sb.Append(", ");
+            sb.Append($"{{ n = {i} }}");
+        }
+        sb.Append('}');
+        shell.Execute(sb.ToString());
+
+        var output = CaptureOutput(() => shell.Execute("t"));
+
+        Assert.Contains("…", output); // LuaMoreRows 截断提示
+    }
+
+    [Fact]
+    public void ReplEcho_Tuple_StaysTabSeparated()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+        var output = CaptureOutput(() => shell.Execute("1, 'a'"));
+        Assert.Equal($"1\ta{Environment.NewLine}", output);
+    }
+
     [Fact]
     public void Exit_StopsChunk_AndReturnsRequestedCode()
     {

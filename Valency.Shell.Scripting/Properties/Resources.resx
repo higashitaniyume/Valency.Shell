@@ -30,6 +30,9 @@
   <data name="LuaGrepSource" xml:space="preserve">
     <value>grep 的源必须是字符串或字符串数组</value>
   </data>
+  <data name="LuaMoreRows" xml:space="preserve">
+    <value>… 仅显示前 {0} 行</value>
+  </data>
   <data name="LuaMissingCommand" xml:space="preserve">
     <value>缺少命令名</value>
   </data>
