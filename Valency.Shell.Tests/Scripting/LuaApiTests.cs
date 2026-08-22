@@ -210,9 +210,10 @@ public class LuaApiTests
         var host = new FakeLuaHost { NextSpawnId = 9 };
         var shell = new LuaShell(host);
 
-        var output = CaptureOutput(() => shell.Execute("spawn(\"make\")"));
+        var output = CaptureOutput(() => shell.Execute("jobid = spawn(\"make\")"));
 
-        Assert.Equal($"9{Environment.NewLine}", output);
+        Assert.Equal(string.Empty, output); // 作业提示由宿主打印，退出码/id 不回显
+        Assert.Equal(9.0, shell.GetGlobal("jobid")!.Number);
         Assert.Equal("make", host.SpawnCalls.Single());
     }
 

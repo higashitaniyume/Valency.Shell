@@ -1,5 +1,4 @@
 using Valency.Shell.Core.Builtins;
-using Valency.Shell.Scripting.Eval;
 
 namespace Valency.Shell.Builtins;
 
@@ -17,6 +16,7 @@ public sealed class ExitCommand : IBuiltinCommand
 		var code = args.Positionals.Count > 0 && int.TryParse(args.Positionals[0], out var c)
 			? c
 			: context.LastExitCode;
-		throw new ControlFlowException(ControlFlowKind.Exit, code);
+		context.RequestExit(code);
+		return code;
 	}
 }

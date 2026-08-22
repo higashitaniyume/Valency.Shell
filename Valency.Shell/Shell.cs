@@ -2,13 +2,12 @@ using System.Diagnostics;
 using Serilog;
 using Valency.Shell.Builtins;
 using Valency.Shell.Core.Completion;
+using Valency.Shell.Core.Resolution;
 using Valency.Shell.Editing;
 using Valency.Shell.Engine;
 using Valency.Shell.Prompting;
-using Valency.Shell.Scripting.Ast;
 using Valency.Shell.Scripting.Eval;
-using Valency.Shell.Scripting.Lexing;
-using Valency.Shell.Scripting.Parsing;
+using Valency.Shell.Scripting.Lua;
 
 namespace Valency.Shell;
 
@@ -23,11 +22,11 @@ public sealed class JobEventArgs(BackgroundJob job) : EventArgs
 	public BackgroundJob Job { get; } = job;
 }
 
-public sealed class Shell : IShellContext, IShellRuntime
+public sealed class Shell : IShellContext, ILuaHost
 {
 	private readonly LineEditor _editor;
 	private readonly ShellState _state = new();
-	private readonly Interpreter _interpreter;
+	private readonly LuaShell _lua;
 	private readonly BuiltinRegistry _builtins;
 	private readonly ILogger _logger;
 	private readonly PromptFormatter _promptFormatter;
@@ -49,7 +48,7 @@ public sealed class Shell : IShellContext, IShellRuntime
 		_logger = logger.ForContext("Src", "shell");
 		_promptFormatter = promptFormatter;
 		_promptSettings = promptSettings;
-		_interpreter = new Interpreter(this, _state, _logger);
+		_lua = new LuaShell(this, _logger);
 		_editor = new LineEditor(new CompletionEngine(builtins.Commands.Select(c => c.Spec.Name)));
 		Console.CancelKeyPress += OnCancelKeyPress;
 	}
@@ -57,13 +56,21 @@ public sealed class Shell : IShellContext, IShellRuntime
 	public string ScriptName
 	{
 		get => _state.ScriptName;
-		set => _state.ScriptName = value;
+		set
+		{
+			_state.ScriptName = value;
+			_lua.SetScriptArgs(value, _state.PositionalArgs);
+		}
 	}
 
 	public IReadOnlyList<string> PositionalArgs
 	{
 		get => _state.PositionalArgs;
-		set => _state.PositionalArgs = value;
+		set
+		{
+			_state.PositionalArgs = value;
+			_lua.SetScriptArgs(_state.ScriptName, value);
+		}
 	}
 
 	private void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
@@ -138,39 +145,13 @@ public sealed class Shell : IShellContext, IShellRuntime
 		return code;
 	}
 
-	private int ExecuteScript(string text)
-	{
-		try
-		{
-			return _interpreter.Execute(text);
-		}
-		catch (SyntaxError ex)
-		{
-			Console.Error.WriteLine(ex.Message);
-			_logger.Error(ex, Resources.LogParseFailed, text);
-			_state.LastExitCode = 2;
-			return 2;
-		}
-		catch (IncompleteInputException ex)
-		{
-			Console.Error.WriteLine(ex.Message);
-			_state.LastExitCode = 2;
-			return 2;
-		}
-		catch (InvalidOperationException ex)
-		{
-			Console.Error.WriteLine(ex.Message);
-			_logger.Error(ex, Resources.LogExpressionFailed, ex.Message);
-			_state.LastExitCode = 2;
-			return 2;
-		}
-	}
+	private int ExecuteScript(string text) => _lua.Execute(text);
 
-	// ---- IShellRuntime ----
+	// ---- ILuaHost ----
 
-	private static readonly string[] ScriptExtensions = [".vsh", ".sh", ".bash", ".zsh"];
+	private static readonly string[] ScriptExtensions = [".vsh", ".sh", ".bash", ".zsh", ".lua"];
 
-	public int ExecuteSimpleCommand(IReadOnlyList<string> argv, IReadOnlyList<ResolvedRedirection> redirects)
+	public int Run(IReadOnlyList<string> argv, IReadOnlyList<LuaRedirect>? redirects)
 	{
 		if (argv.Count == 0)
 			return 0;
@@ -180,15 +161,142 @@ public sealed class Shell : IShellContext, IShellRuntime
 
 		if (IsScriptFile(argv[0]))
 		{
-			var scriptCode = ExecuteScriptFile(argv[0], argv);
-			_state.LastExitCode = scriptCode;
-			return scriptCode;
+			var code = ExecuteScriptFile(argv[0], argv);
+			_state.LastExitCode = code;
+			return code;
 		}
 
-		var specs = TranslateRedirects(redirects);
-		var code = ProcessRunner.Run(argv[0], argv.Skip(1).ToArray(), specs, _state.CurrentDirectory, _logger);
+		var exit = ProcessRunner.Run(
+			argv[0], argv.Skip(1).ToArray(), TranslateLuaRedirects(redirects), _state.CurrentDirectory, _logger);
+		_state.LastExitCode = exit;
+		return exit;
+	}
+
+	public CaptureResult Capture(IReadOnlyList<string> argv)
+	{
+		if (argv.Count == 0)
+			return new CaptureResult(string.Empty, 0);
+
+		if (_builtins.TryGet(argv[0], out var builtin))
+			return CaptureWithConsoleSwap(() => ExecuteBuiltin(builtin, argv));
+
+		if (IsScriptFile(argv[0]))
+			return CaptureWithConsoleSwap(() => ExecuteScriptFile(argv[0], argv));
+
+		var output = ProcessRunner.RunPipelineCaptured(
+			[argv.ToArray()], _foreground, _logger, out var exit, _state.CurrentDirectory);
+		_state.LastExitCode = exit;
+		return new CaptureResult(output, exit);
+	}
+
+	private CaptureResult CaptureWithConsoleSwap(Func<int> execute)
+	{
+		var originalOut = Console.Out;
+		var originalErr = Console.Error;
+		var writer = new StringWriter();
+		Console.SetOut(writer);
+		Console.SetError(writer);
+		try
+		{
+			var code = execute();
+			return new CaptureResult(writer.ToString(), code);
+		}
+		finally
+		{
+			Console.SetOut(originalOut);
+			Console.SetError(originalErr);
+		}
+	}
+
+	public int Pipeline(IReadOnlyList<string[]> stages, IReadOnlyList<LuaRedirect>? redirects)
+	{
+		if (stages.Count == 1)
+			return Run(stages[0], redirects);
+
+		if (_builtins.TryGet(stages[^1][0], out var lastBuiltin))
+		{
+			var captured = CaptureExternalPrefix(stages, out var prefixExit);
+			_state.LastExitCode = prefixExit;
+			_pipelineInput = new StringReader(captured);
+			try
+			{
+				return ExecuteBuiltin(lastBuiltin, stages[^1]);
+			}
+			finally
+			{
+				_pipelineInput = null;
+			}
+		}
+
+		var specs = TranslateLuaRedirects(redirects);
+		var code = ProcessRunner.RunPipeline(stages, _foreground, specs, _state.CurrentDirectory, _logger);
 		_state.LastExitCode = code;
 		return code;
+	}
+
+	public CaptureResult CapturePipeline(IReadOnlyList<string[]> stages)
+	{
+		if (stages.Count == 1)
+			return Capture(stages[0]);
+
+		if (_builtins.TryGet(stages[^1][0], out var lastBuiltin))
+		{
+			var captured = CaptureExternalPrefix(stages, out var prefixExit);
+			_state.LastExitCode = prefixExit;
+			_pipelineInput = new StringReader(captured);
+			try
+			{
+				return CaptureWithConsoleSwap(() => ExecuteBuiltin(lastBuiltin, stages[^1]));
+			}
+			finally
+			{
+				_pipelineInput = null;
+			}
+		}
+
+		var output = ProcessRunner.RunPipelineCaptured(stages, _foreground, _logger, out var exit, _state.CurrentDirectory);
+		_state.LastExitCode = exit;
+		return new CaptureResult(output, exit);
+	}
+
+	private string CaptureExternalPrefix(IReadOnlyList<string[]> stages, out int exitCode)
+	{
+		var external = stages.Take(stages.Count - 1).ToArray();
+		return ProcessRunner.RunPipelineCaptured(external, _foreground, _logger, out exitCode, _state.CurrentDirectory);
+	}
+
+	public int? Spawn(IReadOnlyList<string> argv)
+	{
+		if (argv.Count == 0)
+			return null;
+
+		if (_builtins.TryGet(argv[0], out var builtin))
+		{
+			ExecuteBuiltin(builtin, argv);
+			return 0;
+		}
+
+		var job = ProcessRunner.StartBackground(argv[0], argv.Skip(1).ToArray(), _logger, _state.CurrentDirectory);
+		if (job is null)
+		{
+			_state.LastExitCode = 127;
+			return null;
+		}
+
+		job.Id = _nextJobId++;
+		_state.LastBackgroundPid = job.Process.Id;
+		_jobs.Add(job);
+		Console.Out.WriteLine($"[{job.Id}] {job.Process.Id}");
+		_logger.Information(Resources.LogJobStarted, job.Id, job.Command, job.Process.Id);
+		JobStarted?.Invoke(this, new JobEventArgs(job));
+		return job.Id;
+	}
+
+	public bool IsCommandAvailable(string name)
+	{
+		return _builtins.TryGet(name, out _)
+			|| IsScriptFile(name)
+			|| PathResolver.Resolve(name, _state.CurrentDirectory) is not null;
 	}
 
 	private bool IsScriptFile(string command)
@@ -239,73 +347,13 @@ public sealed class Shell : IShellContext, IShellRuntime
 		try
 		{
 			_logger?.Debug(Resources.LogScriptFile, fullPath);
-			return ExecuteScript(File.ReadAllText(fullPath));
+			return _lua.ExecuteFile(fullPath, File.ReadAllText(fullPath));
 		}
 		finally
 		{
 			_state.ScriptName = savedName;
 			_state.PositionalArgs = savedArgs;
 		}
-	}
-
-	public int ExecutePipeline(IReadOnlyList<PipelineStage> stages)
-	{
-		if (stages.Count == 1)
-			return ExecuteSimpleCommand(stages[0].Argv, stages[0].Redirects);
-
-		if (_builtins.TryGet(stages[^1].Argv[0], out var lastBuiltin))
-		{
-			var external = stages.Take(stages.Count - 1)
-				.Select(s => s.Argv.ToArray())
-				.ToArray();
-			var captured = ProcessRunner.RunPipelineCaptured(
-				external, _foreground, _logger, out var pipelineExit, _state.CurrentDirectory);
-			_state.LastExitCode = pipelineExit;
-			_pipelineInput = new StringReader(captured);
-			try
-			{
-				return ExecuteBuiltin(lastBuiltin, stages[^1].Argv);
-			}
-			finally
-			{
-				_pipelineInput = null;
-			}
-		}
-
-		var commands = stages.Select(s => s.Argv.ToArray()).ToArray();
-		var redirectSpecs = new List<RedirectSpec>();
-		foreach (var r in stages[0].Redirects)
-			redirectSpecs.AddRange(TranslateOne(r));
-		foreach (var r in stages[^1].Redirects)
-			redirectSpecs.AddRange(TranslateOne(r));
-
-		var code = ProcessRunner.RunPipeline(commands, _foreground, redirectSpecs, _state.CurrentDirectory, _logger);
-		_state.LastExitCode = code;
-		return code;
-	}
-
-	public int ExecuteBackground(IReadOnlyList<string> argv)
-	{
-		if (argv.Count == 0)
-			return 0;
-
-		if (_builtins.TryGet(argv[0], out var builtin))
-			return ExecuteBuiltin(builtin, argv);
-
-		var job = ProcessRunner.StartBackground(argv[0], argv.Skip(1).ToArray(), _logger, _state.CurrentDirectory);
-		if (job is null)
-		{
-			_state.LastExitCode = 127;
-			return 127;
-		}
-
-		job.Id = _nextJobId++;
-		_state.LastBackgroundPid = job.Process.Id;
-		_jobs.Add(job);
-		Console.Out.WriteLine($"[{job.Id}] {job.Process.Id}");
-		_logger.Information(Resources.LogJobStarted, job.Id, job.Command, job.Process.Id);
-		JobStarted?.Invoke(this, new JobEventArgs(job));
-		return 0;
 	}
 
 	private int ExecuteBuiltin(IBuiltinCommand builtin, IReadOnlyList<string> argv)
@@ -340,35 +388,21 @@ public sealed class Shell : IShellContext, IShellRuntime
 		return code;
 	}
 
-	private static IReadOnlyList<RedirectSpec> TranslateRedirects(IReadOnlyList<ResolvedRedirection> redirects)
+	private static IReadOnlyList<RedirectSpec>? TranslateLuaRedirects(IReadOnlyList<LuaRedirect>? redirects)
 	{
-		var list = new List<RedirectSpec>();
-		foreach (var redirect in redirects)
-			list.AddRange(TranslateOne(redirect));
-		return list;
+		if (redirects is null || redirects.Count == 0)
+			return null;
+		return redirects.Select(ToSpec).ToArray();
 	}
 
-	private static IReadOnlyList<RedirectSpec> TranslateOne(ResolvedRedirection redirect)
+	private static RedirectSpec ToSpec(LuaRedirect redirect) => redirect.Mode switch
 	{
-		return redirect.Kind switch
-		{
-			RedirectionKind.Input => [new RedirectSpec(redirect.Fd, RedirectKind.Input, redirect.Target)],
-			RedirectionKind.Output => [new RedirectSpec(redirect.Fd, RedirectKind.Output, redirect.Target)],
-			RedirectionKind.Append => [new RedirectSpec(redirect.Fd, RedirectKind.Append, redirect.Target)],
-			RedirectionKind.DupOutput => [new RedirectSpec(redirect.Fd, RedirectKind.DupOutput, redirect.Target)],
-			RedirectionKind.AndOutput =>
-			[
-				new RedirectSpec(1, RedirectKind.Output, redirect.Target),
-				new RedirectSpec(2, RedirectKind.Output, redirect.Target),
-			],
-			RedirectionKind.AndAppend =>
-			[
-				new RedirectSpec(1, RedirectKind.Append, redirect.Target),
-				new RedirectSpec(2, RedirectKind.Append, redirect.Target),
-			],
-			_ => [],
-		};
-	}
+		LuaRedirectMode.Input => new RedirectSpec(redirect.Fd, RedirectKind.Input, redirect.Target),
+		LuaRedirectMode.Output => new RedirectSpec(redirect.Fd, RedirectKind.Output, redirect.Target),
+		LuaRedirectMode.Append => new RedirectSpec(redirect.Fd, RedirectKind.Append, redirect.Target),
+		LuaRedirectMode.DupOutput => new RedirectSpec(2, RedirectKind.DupOutput, redirect.Target),
+		_ => throw new InvalidOperationException(redirect.Mode.ToString()),
+	};
 
 	// ---- IShellContext ----
 
@@ -388,7 +422,11 @@ public sealed class Shell : IShellContext, IShellRuntime
 
 	public bool ExitRequested => _state.ExitRequested;
 	public int RequestedExitCode => _state.ExitCode;
-	public void RequestExit(int exitCode) => _state.ExitCode = exitCode;
+	public void RequestExit(int exitCode)
+	{
+		_state.ExitRequested = true;
+		_state.ExitCode = exitCode;
+	}
 
 	public void PrintJobs() => ListJobs();
 
@@ -416,7 +454,7 @@ public sealed class Shell : IShellContext, IShellRuntime
 			Console.Error.WriteLine(string.Format(Resources.ShellSourceFileNotFound, path));
 			return 1;
 		}
-		return ExecuteScript(File.ReadAllText(full));
+		return _lua.ExecuteFile(full, File.ReadAllText(full));
 	}
 
 	private void ReapJobs()

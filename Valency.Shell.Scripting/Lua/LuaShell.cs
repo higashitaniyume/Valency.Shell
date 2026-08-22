@@ -21,6 +21,7 @@ public sealed class LuaShell
     private readonly ILogger? _logger;
     private readonly Dictionary<string, DynValue> _proxies = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _knownCommands = new(StringComparer.OrdinalIgnoreCase);
+    private bool _suppressEcho;
 
     public LuaShell(ILuaHost host, ILogger? logger = null)
     {
@@ -100,10 +101,12 @@ public sealed class LuaShell
     private int CallChunk(DynValue chunk, bool echo)
     {
         _logger?.Debug(Resources.LogLuaChunk, echo ? "return " : "chunk");
+        _suppressEcho = false;
         try
         {
             var result = _script.Call(chunk);
-            if (echo)
+            // 命令类调用（run/代理/pipe/spawn）返回退出码，不作为表达式结果回显
+            if (echo && !_suppressEcho)
                 PrintResult(result);
             return _host.LastExitCode;
         }
@@ -155,6 +158,7 @@ public sealed class LuaShell
 
     private DynValue RunCallback(ScriptExecutionContext ctx, CallbackArguments args)
     {
+        _suppressEcho = true;
         var code = RunArgv(LuaMarshaling.ToArgv(args, 0));
         return DynValue.NewNumber(code);
     }
@@ -200,6 +204,7 @@ public sealed class LuaShell
         if (stages.Count == 0)
             throw Errors.MissingCommand();
 
+        _suppressEcho = true;
         var code = _host.Pipeline(stages, LuaMarshaling.ToRedirects(options));
         ThrowIfExitRequested();
         return DynValue.NewNumber(code);
@@ -232,6 +237,7 @@ public sealed class LuaShell
 
         var jobId = _host.Spawn(argv);
         ThrowIfExitRequested();
+        _suppressEcho = true;
         return jobId is null ? DynValue.Nil : DynValue.NewNumber(jobId.Value);
     }
 
@@ -322,6 +328,7 @@ public sealed class LuaShell
             argv.AddRange(rest);
             var code = _host.Run(argv, LuaMarshaling.ToRedirects(options));
             ThrowIfExitRequested();
+            _suppressEcho = true;
             return DynValue.NewNumber(code);
         }, name));
         _proxies[name] = proxy;
