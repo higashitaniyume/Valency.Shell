@@ -15,36 +15,56 @@ public sealed class CompletionEngine : ICompleter
 
 	public CompletionResult? Complete(string line, int cursor)
 	{
-		var start = TokenStart(line, cursor);
-		var token = line[start..cursor];
-		var isCommand = IsCommandPosition(line, start) && token.IndexOfAny(['\\', '/']) < 0;
-		var candidates = isCommand ? CompleteCommand(token) : CompletePath(token);
+		// 标识符 token：调用位置（行首或 ( , = { 之后）→ 命令/函数名补全
+		var idStart = cursor;
+		while (idStart > 0 && IsIdentifierChar(line[idStart - 1]))
+			idStart--;
 
-		if (candidates.Count == 0)
-			return null;
+		if (cursor > idStart && IsCallPosition(line, idStart))
+		{
+			var candidates = CompleteCommand(line[idStart..cursor]);
+			if (candidates.Count == 0)
+				return null;
+			return new CompletionResult(idStart, candidates, IsCommand: true);
+		}
 
-		return new CompletionResult(start, candidates, isCommand);
+		// 路径 token：包含分隔符的片段（含字符串参数里的路径）→ 路径补全
+		var pathStart = cursor;
+		while (pathStart > 0 && !char.IsWhiteSpace(line[pathStart - 1]) &&
+		       line[pathStart - 1] is not ('(' or ',' or '=' or '{'))
+			pathStart--;
+
+		if (pathStart < idStart)
+		{
+			var candidates = CompletePath(line[pathStart..cursor]);
+			if (candidates.Count == 0)
+				return null;
+			return new CompletionResult(pathStart, candidates, IsCommand: false);
+		}
+
+		// 空 token 处于调用位置 → 列出全部命令
+		if (cursor == idStart && IsCallPosition(line, cursor))
+		{
+			var candidates = CompleteCommand(string.Empty);
+			if (candidates.Count == 0)
+				return null;
+			return new CompletionResult(cursor, candidates, IsCommand: true);
+		}
+
+		return null;
 	}
 
 	private static StringComparison Comparison =>
 		OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
-	private static int TokenStart(string line, int cursor)
-	{
-		var start = cursor;
-		while (start > 0 && !char.IsWhiteSpace(line[start - 1]) && line[start - 1] is not (';' or '|' or '&'))
-			start--;
-		return start;
-	}
+	private static bool IsIdentifierChar(char ch) => char.IsLetterOrDigit(ch) || ch == '_';
 
-	private static bool IsCommandPosition(string line, int start)
+	private static bool IsCallPosition(string line, int start)
 	{
 		var i = start - 1;
 		while (i >= 0 && char.IsWhiteSpace(line[i]))
 			i--;
-		if (i < 0)
-			return true;
-		return line[i] is ';' or '|' or '&';
+		return i < 0 || line[i] is '(' or ',' or '=' or '{';
 	}
 
 	private List<string> CompleteCommand(string token)

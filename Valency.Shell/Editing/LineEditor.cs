@@ -236,7 +236,7 @@ public sealed class LineEditor
 
 		if (cands.Count == 1)
 		{
-			ReplaceRange(start, _cursor, cands[0] + (r.IsCommand ? " " : ""));
+			ReplaceRange(start, _cursor, cands[0] + (r.IsCommand ? "(" : ""));
 			return;
 		}
 

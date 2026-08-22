@@ -29,7 +29,7 @@ public class CompletionEngineTests : IDisposable
 	private static CompletionEngine Create(params string[] builtins) => new(builtins);
 
 	[Fact]
-	public void Complete_CommandPosition_MatchesBuiltin()
+	public void Complete_LineStart_MatchesBuiltin()
 	{
 		var engine = Create("grep", "help", "logs");
 		var result = engine.Complete("gr", 2);
@@ -41,7 +41,7 @@ public class CompletionEngineTests : IDisposable
 	}
 
 	[Fact]
-	public void Complete_CommandPosition_MatchesPathExecutable()
+	public void Complete_LineStart_MatchesPathExecutable()
 	{
 		File.WriteAllText(Path.Combine(_tempDir, "mytool.exe"), "");
 		File.WriteAllText(Path.Combine(_tempDir, "other.exe"), "");
@@ -55,13 +55,33 @@ public class CompletionEngineTests : IDisposable
 	}
 
 	[Fact]
-	public void Complete_AfterSeparator_IsCommandPosition()
+	public void Complete_AfterComma_IsCallPosition()
 	{
 		var engine = Create("grep");
-		var result = engine.Complete("echo x | gr", 11);
+		var result = engine.Complete("pipe(\"cat\", gr", 13);
+
 		Assert.NotNull(result);
 		Assert.True(result!.Value.IsCommand);
-		Assert.Contains("grep", result!.Value.Candidates);
+		Assert.Equal(12, result.Value.Start);
+		Assert.Contains("grep", result.Value.Candidates);
+	}
+
+	[Fact]
+	public void Complete_AfterOpenParen_ListsCommands()
+	{
+		var engine = Create("grep", "help");
+		var result = engine.Complete("run(", 4);
+
+		Assert.NotNull(result);
+		Assert.True(result!.Value.IsCommand);
+		Assert.NotEmpty(result.Value.Candidates);
+	}
+
+	[Fact]
+	public void Complete_IdentifierNotInCallPosition_ReturnsNull()
+	{
+		var engine = Create("grep");
+		Assert.Null(engine.Complete("hello gr", 8));
 	}
 
 	[Fact]
@@ -102,7 +122,7 @@ public class CompletionEngineTests : IDisposable
 	}
 
 	[Fact]
-	public void Complete_EmptyToken_AtCommandStart_ReturnsCommands()
+	public void Complete_EmptyToken_AtCallPosition_ReturnsCommands()
 	{
 		var engine = Create("grep", "help");
 		var result = engine.Complete("", 0);

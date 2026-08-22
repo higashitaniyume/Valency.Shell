@@ -3,8 +3,19 @@ using Valency.Shell.Core.Resolution;
 
 namespace Valency.Shell.Core.Highlighting;
 
+/// <summary>
+///     Paints a Lua line: keywords, strings (quoted and long), comments, and
+///     call-position identifiers checked against known commands (blue/red).
+/// </summary>
 public sealed class Highlighter
 {
+	private static readonly HashSet<string> Keywords = new(StringComparer.Ordinal)
+	{
+		"and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+		"goto", "if", "in", "local", "nil", "not", "or", "repeat", "return",
+		"then", "true", "until", "while",
+	};
+
 	private readonly Func<string, bool> _isCommandValid;
 	private readonly Dictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
 
@@ -20,132 +31,85 @@ public sealed class Highlighter
 			return [];
 
 		var colors = new ConsoleColor?[text.Length];
-		PaintCommand(text, colors);
-		PaintStrings(text, colors);
-		PaintVariables(text, colors);
-		PaintSeparators(text, colors);
+		Paint(text, colors);
 		return ToSpans(colors);
 	}
 
-	private void PaintCommand(string text, ConsoleColor?[] colors)
+	private void Paint(string text, ConsoleColor?[] colors)
 	{
-		var start = 0;
-		while (start < text.Length && char.IsWhiteSpace(text[start])) start++;
-		if (start >= text.Length)
-			return;
-
-		var end = ScanToken(text, start);
-		var color = IsValid(text[start..end]) ? ConsoleColor.Blue : ConsoleColor.Red;
-		Paint(colors, start, end, color);
-	}
-
-	private static void PaintStrings(string text, ConsoleColor?[] colors)
-	{
-		var inQuotes = false;
-		var quoteChar = '"';
-		var start = 0;
-		for (var i = 0; i < text.Length; i++)
+		var i = 0;
+		while (i < text.Length)
 		{
 			var ch = text[i];
-			if (!inQuotes && ch is '"' or '\'')
-			{
-				inQuotes = true;
-				quoteChar = ch;
-				start = i;
-			}
-			else if (inQuotes && ch == quoteChar)
-			{
-				inQuotes = false;
-				var color = quoteChar == '"' ? ConsoleColor.Yellow : ConsoleColor.DarkYellow;
-				Paint(colors, start, i + 1, color);
-			}
-		}
-		if (inQuotes)
-			Paint(colors, start, text.Length, quoteChar == '"' ? ConsoleColor.Yellow : ConsoleColor.DarkYellow);
-	}
 
-	private static void PaintSeparators(string text, ConsoleColor?[] colors)
-	{
-		var inQuotes = false;
-		var quoteChar = '"';
-		for (var i = 0; i < text.Length; i++)
-		{
-			var ch = text[i];
+			if (ch == '-' && i + 1 < text.Length && text[i + 1] == '-')
+			{
+				Paint(colors, i, text.Length, ConsoleColor.DarkGreen);
+				return;
+			}
+
 			if (ch is '"' or '\'')
 			{
-				if (!inQuotes)
-				{
-					inQuotes = true;
-					quoteChar = ch;
-				}
-				else if (ch == quoteChar)
-				{
-					inQuotes = false;
-				}
+				var end = ScanString(text, i, ch);
+				Paint(colors, i, end, ConsoleColor.Yellow);
+				i = end;
 				continue;
 			}
-			if (inQuotes)
-				continue;
 
-			if (ch == ';')
+			if (ch == '[' && i + 1 < text.Length && text[i + 1] == '[')
 			{
-				colors[i] = ConsoleColor.DarkCyan;
+				var close = text.IndexOf("]]", i + 2, StringComparison.Ordinal);
+				var end = close < 0 ? text.Length : close + 2;
+				Paint(colors, i, end, ConsoleColor.Yellow);
+				i = end;
+				continue;
 			}
-			else if ((ch == '&' || ch == '|') && i + 1 < text.Length && text[i + 1] == ch)
+
+			if (char.IsLetter(ch) || ch == '_')
 			{
-				colors[i] = ConsoleColor.DarkCyan;
-				colors[i + 1] = ConsoleColor.DarkCyan;
-				i++;
+				var end = i;
+				while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_'))
+					end++;
+				var word = text[i..end];
+				if (Keywords.Contains(word))
+				{
+					Paint(colors, i, end, ConsoleColor.Cyan);
+				}
+				else if (IsCallPosition(text, end))
+				{
+					Paint(colors, i, end, IsValid(word) ? ConsoleColor.Blue : ConsoleColor.Red);
+				}
+				i = end;
+				continue;
 			}
-			else if (ch == '&' || ch == '|')
-			{
-				colors[i] = ConsoleColor.DarkCyan;
-			}
+
+			i++;
 		}
 	}
 
-	private static void PaintVariables(string text, ConsoleColor?[] colors)
+	private static bool IsCallPosition(string text, int end)
 	{
-		var inSingleQuotes = false;
-		for (var i = 0; i < text.Length; i++)
+		var j = end;
+		while (j < text.Length && char.IsWhiteSpace(text[j]))
+			j++;
+		return j < text.Length && text[j] == '(';
+	}
+
+	private static int ScanString(string text, int start, char quote)
+	{
+		var i = start + 1;
+		while (i < text.Length)
 		{
-			if (text[i] == '\'')
+			if (text[i] == '\\')
 			{
-				inSingleQuotes = !inSingleQuotes;
+				i += 2;
 				continue;
 			}
-			if (inSingleQuotes || text[i] != '$' || i + 1 >= text.Length)
-				continue;
-			if (i > 0 && text[i - 1] == '\\')
-				continue;
-
-			var next = text[i + 1];
-			int end;
-			if (next == '{')
-			{
-				end = text.IndexOf('}', i + 2);
-				if (end < 0) continue;
-				end++;
-			}
-			else if (next == '?')
-			{
-				end = i + 2;
-			}
-			else
-			{
-				var nameStart = i + 1;
-				if (nameStart + 4 <= text.Length &&
-					string.Compare(text, nameStart, "env:", 0, 4, StringComparison.OrdinalIgnoreCase) == 0)
-					nameStart += 4;
-				end = nameStart;
-				while (end < text.Length && (char.IsLetterOrDigit(text[end]) || text[end] == '_'))
-					end++;
-				if (end == nameStart) continue;
-			}
-
-			Paint(colors, i, end, ConsoleColor.Magenta);
-			i = end - 1;
+			if (text[i] == quote)
+				return i + 1;
+			i++;
 		}
+		return text.Length;
 	}
 
 	private bool IsValid(string command)
@@ -158,35 +122,6 @@ public sealed class Highlighter
 			_cache[command] = valid;
 		}
 		return valid;
-	}
-
-	private static int ScanToken(string text, int start)
-	{
-		var i = start;
-		var inQuotes = false;
-		var quoteChar = '"';
-		while (i < text.Length)
-		{
-			var ch = text[i];
-			if (ch is '"' or '\'')
-			{
-				if (!inQuotes)
-				{
-					inQuotes = true;
-					quoteChar = ch;
-				}
-				else if (ch == quoteChar)
-				{
-					inQuotes = false;
-				}
-			}
-			else if (!inQuotes && char.IsWhiteSpace(ch))
-			{
-				break;
-			}
-			i++;
-		}
-		return i;
 	}
 
 	private static void Paint(ConsoleColor?[] colors, int start, int end, ConsoleColor color)
