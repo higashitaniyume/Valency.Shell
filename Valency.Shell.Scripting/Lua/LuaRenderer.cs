@@ -27,6 +27,16 @@ internal static class LuaRenderer
 
 	private static string RenderTable(Table table)
 	{
+		// env 代理：本体恒空，按标记渲染进程环境快照
+		if (table.MetaTable is { } meta && meta.Get("__valency_env").CastToBool())
+			return FormatKeyValueList(Environment.GetEnvironmentVariables()
+				.Cast<System.Collections.DictionaryEntry>()
+				.Select(e => (Key: e.Key?.ToString(), Value: e.Value?.ToString() ?? string.Empty))
+				.Where(p => p.Key is not null)
+				.Select(p => (p.Key!, p.Value))
+				.OrderBy(p => p.Item1, StringComparer.OrdinalIgnoreCase)
+				.ToList());
+
 		var length = table.Length;
 		if (length == 0)
 			return RenderMap(table);
@@ -59,10 +69,15 @@ internal static class LuaRenderer
 			.Where(p => p.Key.Type == DataType.String)
 			.Select(p => (p.Key.String, CellText(p.Value)))
 			.ToList();
+		return FormatKeyValueList(pairs);
+	}
+
+	private static string FormatKeyValueList(List<(string Key, string Value)> pairs)
+	{
 		if (pairs.Count == 0)
 			return "{}";
 
-		var keyWidth = pairs.Max(p => p.Item1.Length);
+		var keyWidth = pairs.Max(p => p.Key.Length);
 		var sb = new StringBuilder();
 		foreach (var (key, text) in pairs)
 			sb.AppendLine(key.PadRight(keyWidth) + " : " + text);

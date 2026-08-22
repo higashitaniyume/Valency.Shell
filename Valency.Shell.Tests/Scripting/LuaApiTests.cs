@@ -499,6 +499,32 @@ public class LuaApiTests
     }
 
     [Fact]
+    public void Env_ReplEcho_RendersSnapshot()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+        Environment.SetEnvironmentVariable("VALENCY_ENV_RENDER_T", "42");
+
+        var output = CaptureOutput(() => shell.Execute("env"));
+
+        Assert.Contains("VALENCY_ENV_RENDER_T", output);   // key 有列对齐填充
+        Assert.Contains(": 42", output);
+        Assert.Contains("PATH", output);
+        Environment.SetEnvironmentVariable("VALENCY_ENV_RENDER_T", null);
+    }
+
+    [Fact]
+    public void Env_Pairs_IteratesProcessEnvironment()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+        Environment.SetEnvironmentVariable("VALENCY_PAIRS_T", "x");
+
+        shell.Execute("found = false for k, v in pairs(env) do if k == 'VALENCY_PAIRS_T' then found = (v == 'x') end end");
+
+        Assert.True(shell.GetGlobal("found")!.Boolean);
+        Environment.SetEnvironmentVariable("VALENCY_PAIRS_T", null);
+    }
+
+    [Fact]
     public void ArgsTable_ExposesScriptNameAndPositionals()
     {
         var shell = new LuaShell(new FakeLuaHost());

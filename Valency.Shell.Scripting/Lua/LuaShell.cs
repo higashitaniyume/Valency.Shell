@@ -351,6 +351,26 @@ public sealed class LuaShell
             Environment.SetEnvironmentVariable(key, value.IsNil() ? null : value.ToPrintString());
             return DynValue.Nil;
         }, "env.set")));
+        meta.Table.Set("__valency_env", DynValue.NewBoolean(true));
+        meta.Table.Set("__pairs", DynValue.NewCallback(new CallbackFunction((ctx, args) =>
+        {
+            // 快照迭代器：for k, v in pairs(env) 遍历进程环境
+            var entries = Environment.GetEnvironmentVariables()
+                .Cast<System.Collections.DictionaryEntry>()
+                .Select(e => (Key: e.Key?.ToString(), Value: e.Value?.ToString() ?? string.Empty))
+                .Where(p => p.Key is not null)
+                .OrderBy(p => p.Key, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var index = 0;
+            var iterator = DynValue.NewCallback(new CallbackFunction((ictx, iargs) =>
+            {
+                if (index >= entries.Count)
+                    return DynValue.Nil;
+                var (key, value) = entries[index++];
+                return DynValue.NewTuple(DynValue.NewString(key!), DynValue.NewString(value));
+            }, "env.next"));
+            return DynValue.NewTuple(iterator, args.Count > 0 ? args[0] : DynValue.Nil, DynValue.Nil);
+        }, "env.pairs")));
         env.Table.MetaTable = meta.Table;
         _script.Globals.Set("env", env);
     }
