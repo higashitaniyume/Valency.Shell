@@ -11,6 +11,8 @@ internal static class Resources
 
 	internal static string LuaArgNotString => Get("LuaArgNotString");
 	internal static string LuaArgString => Get("LuaArgString");
+	internal static string LuaArgFunction => Get("LuaArgFunction");
+	internal static string LuaChainSelf => Get("LuaChainSelf");
 	internal static string LuaFileNotFound => Get("LuaFileNotFound");
 	internal static string LuaDirNotFound => Get("LuaDirNotFound");
 	internal static string LuaIoError => Get("LuaIoError");

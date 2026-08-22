@@ -127,6 +127,12 @@ internal static class Errors
     public static ScriptRuntimeException ArgString(string name)
         => new(string.Format(Resources.LuaArgString, name));
 
+    public static ScriptRuntimeException ArgFunction(string name)
+        => new(string.Format(Resources.LuaArgFunction, name));
+
+    public static ScriptRuntimeException ChainSelf()
+        => new(Resources.LuaChainSelf);
+
     public static ScriptRuntimeException UnknownOptionKey(string key)
         => new(string.Format(Resources.LuaUnknownOptionKey, key));
 

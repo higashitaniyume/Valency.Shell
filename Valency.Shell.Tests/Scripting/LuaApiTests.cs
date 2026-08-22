@@ -398,6 +398,80 @@ public class LuaApiTests
         Assert.Equal($"1\ta{Environment.NewLine}", output);
     }
 
+    // ---- 方法链 ----
+
+    [Fact]
+    public void Chain_FilterMapSort_OnLsResults()
+    {
+        using var dir = new TempWorkDir();
+        Directory.CreateDirectory(Path.Combine(dir.Dir, "sub"));
+        File.WriteAllText(Path.Combine(dir.Dir, "a.lua"), "x");
+        File.WriteAllText(Path.Combine(dir.Dir, "b.lua"), "x");
+        var host = new FakeLuaHost { WorkingDirectory = dir.Dir };
+        var shell = new LuaShell(host);
+
+        shell.Execute("""
+            files = ls()
+                :filter(function(e) return not e.is_dir end)
+                :map(function(e) return e.name end)
+                :sort()
+            n = #files
+            first = files[1]
+            """);
+
+        Assert.Equal(2.0, shell.GetGlobal("n")!.Number);
+        Assert.Equal("a.lua", shell.GetGlobal("first")!.String);
+    }
+
+    [Fact]
+    public void Chain_ReverseTake_OnGrepResults()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        shell.Execute("m = grep('a', {'a1', 'b', 'a2'}):reverse():take(1) n = #m only = m[1]");
+
+        Assert.Equal(1.0, shell.GetGlobal("n")!.Number);
+        Assert.Equal("a2", shell.GetGlobal("only")!.String);
+    }
+
+    [Fact]
+    public void Chain_SortWithComparator_Descending()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        shell.Execute("m = grep('x', {'x1', 'x3', 'x2'}):sort(function(a, b) return a > b end) first = m[1]");
+
+        Assert.Equal("x3", shell.GetGlobal("first")!.String);
+    }
+
+    [Fact]
+    public void Chain_Echo_PrintsRenderedResult()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        var output = CaptureOutput(() => shell.Execute("grep('a', {'ab', 'cd'}):echo()"));
+
+        Assert.Equal($"ab{Environment.NewLine}", output);
+    }
+
+    [Fact]
+    public void Chain_PlainTableSemanticsPreserved()
+    {
+        var shell = new LuaShell(new FakeLuaHost());
+
+        shell.Execute("""
+            m = grep('a', {'a1', 'a2'})
+            kind = type(m)
+            n = #m
+            seen = 0
+            for _, v in ipairs(m) do seen = seen + 1 end
+            """);
+
+        Assert.Equal("table", shell.GetGlobal("kind")!.String);
+        Assert.Equal(2.0, shell.GetGlobal("n")!.Number);
+        Assert.Equal(2.0, shell.GetGlobal("seen")!.Number);
+    }
+
     [Fact]
     public void Exit_StopsChunk_AndReturnsRequestedCode()
     {

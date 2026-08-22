@@ -88,7 +88,7 @@ internal static class ObjectApi
 				item.Table.Set("size", DynValue.NewNumber(file.Length));
 			result.Table.Set(DynValue.NewNumber(++i), item);
 		}
-		return result;
+		return LuaQuery.Wrap(script, result);
 	}
 
 	// ---- cat / lines / writefile ----
@@ -199,7 +199,7 @@ internal static class ObjectApi
 			item.Table.Set("state", DynValue.NewString(job.State));
 			result.Table.Set(DynValue.NewNumber(++i), item);
 		}
-		return result;
+		return LuaQuery.Wrap(script, result);
 	}
 
 	internal static DynValue StringArray(Script script, IEnumerable<string> items)
@@ -208,6 +208,6 @@ internal static class ObjectApi
 		var i = 0;
 		foreach (var item in items)
 			result.Table.Set(DynValue.NewNumber(++i), DynValue.NewString(item));
-		return result;
+		return LuaQuery.Wrap(script, result);
 	}
 }

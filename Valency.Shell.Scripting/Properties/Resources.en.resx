@@ -18,6 +18,12 @@
   <data name="LuaArgString" xml:space="preserve">
     <value>Argument {0} must be a string</value>
   </data>
+  <data name="LuaArgFunction" xml:space="preserve">
+    <value>Argument {0} must be a function</value>
+  </data>
+  <data name="LuaChainSelf" xml:space="preserve">
+    <value>chain methods only work on array tables returned by commands</value>
+  </data>
   <data name="LuaFileNotFound" xml:space="preserve">
     <value>File not found: {0}</value>
   </data>

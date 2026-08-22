@@ -311,7 +311,7 @@ public sealed class LuaShell
         var table = DynValue.NewTable(ctx.OwnerScript);
         for (var i = 0; i < matches.Count; i++)
             table.Table.Set(DynValue.NewNumber(i + 1), DynValue.NewString(matches[i]));
-        return table;
+        return LuaQuery.Wrap(ctx.OwnerScript, table);
     }
 
     private DynValue ExitCallback(ScriptExecutionContext ctx, CallbackArguments args)

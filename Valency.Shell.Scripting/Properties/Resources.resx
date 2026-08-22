@@ -18,6 +18,12 @@
   <data name="LuaArgString" xml:space="preserve">
     <value>参数 {0} 必须是字符串</value>
   </data>
+  <data name="LuaArgFunction" xml:space="preserve">
+    <value>参数 {0} 必须是函数</value>
+  </data>
+  <data name="LuaChainSelf" xml:space="preserve">
+    <value>链式方法只能作用于命令返回的数组 table</value>
+  </data>
   <data name="LuaFileNotFound" xml:space="preserve">
     <value>文件不存在: {0}</value>
   </data>
