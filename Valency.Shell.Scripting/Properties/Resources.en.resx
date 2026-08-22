@@ -138,4 +138,34 @@
   <data name="LogCommandSubstitution" xml:space="preserve">
     <value>Command substitution: {Command}</value>
   </data>
+  <data name="LuaArgNotString" xml:space="preserve">
+    <value>Argument {0} (type {1}) cannot be passed to a command; use a string, number or array of strings</value>
+  </data>
+  <data name="LuaMissingCommand" xml:space="preserve">
+    <value>Missing command name</value>
+  </data>
+  <data name="LuaUnknownOptionKey" xml:space="preserve">
+    <value>Unknown option key '{0}' (supported: out, err, append, merge, input)</value>
+  </data>
+  <data name="LuaOptionValueString" xml:space="preserve">
+    <value>Option '{0}' must be a string</value>
+  </data>
+  <data name="LuaMergeNeedsOut" xml:space="preserve">
+    <value>merge=true requires out to be set as well</value>
+  </data>
+  <data name="LuaPipeStageEmpty" xml:space="preserve">
+    <value>pipe stage {0} must not be empty</value>
+  </data>
+  <data name="LuaPipeStageForm" xml:space="preserve">
+    <value>pipe stage {0} must be a string or an array of strings</value>
+  </data>
+  <data name="LogLuaChunk" xml:space="preserve">
+    <value>Executing Lua: {Kind}</value>
+  </data>
+  <data name="LogLuaSyntaxError" xml:space="preserve">
+    <value>Lua syntax error: {Error}</value>
+  </data>
+  <data name="LogLuaRuntimeError" xml:space="preserve">
+    <value>Lua runtime error: {Error}</value>
+  </data>
 </root>

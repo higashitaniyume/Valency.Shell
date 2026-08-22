@@ -138,4 +138,34 @@
   <data name="LogCommandSubstitution" xml:space="preserve">
     <value>命令替换: {Command}</value>
   </data>
+  <data name="LuaArgNotString" xml:space="preserve">
+    <value>第 {0} 个参数（{1} 类型）不能作为命令参数，请使用字符串、数字或字符串数组</value>
+  </data>
+  <data name="LuaMissingCommand" xml:space="preserve">
+    <value>缺少命令名</value>
+  </data>
+  <data name="LuaUnknownOptionKey" xml:space="preserve">
+    <value>未知的选项键 '{0}'（可用：out、err、append、merge、input）</value>
+  </data>
+  <data name="LuaOptionValueString" xml:space="preserve">
+    <value>选项 '{0}' 的值必须是字符串</value>
+  </data>
+  <data name="LuaMergeNeedsOut" xml:space="preserve">
+    <value>merge=true 需要同时指定 out</value>
+  </data>
+  <data name="LuaPipeStageEmpty" xml:space="preserve">
+    <value>pipe 的第 {0} 个阶段不能为空</value>
+  </data>
+  <data name="LuaPipeStageForm" xml:space="preserve">
+    <value>pipe 的第 {0} 个阶段必须是字符串或字符串数组</value>
+  </data>
+  <data name="LogLuaChunk" xml:space="preserve">
+    <value>执行 Lua: {Kind}</value>
+  </data>
+  <data name="LogLuaSyntaxError" xml:space="preserve">
+    <value>Lua 语法错误: {Error}</value>
+  </data>
+  <data name="LogLuaRuntimeError" xml:space="preserve">
+    <value>Lua 运行时错误: {Error}</value>
+  </data>
 </root>

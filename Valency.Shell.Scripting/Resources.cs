@@ -50,7 +50,17 @@ internal static class Resources
 	internal static string LogFunctionInvoked => Get("LogFunctionInvoked");
 	internal static string LogPipelineExecuted => Get("LogPipelineExecuted");
 	internal static string LogRedirectResolved => Get("LogRedirectResolved");
-	internal static string LogCommandSubstitution => Get("LogCommandSubstitution");
+    internal static string LogCommandSubstitution => Get("LogCommandSubstitution");
+    internal static string LuaArgNotString => Get("LuaArgNotString");
+    internal static string LuaMissingCommand => Get("LuaMissingCommand");
+    internal static string LuaUnknownOptionKey => Get("LuaUnknownOptionKey");
+    internal static string LuaOptionValueString => Get("LuaOptionValueString");
+    internal static string LuaMergeNeedsOut => Get("LuaMergeNeedsOut");
+    internal static string LuaPipeStageEmpty => Get("LuaPipeStageEmpty");
+    internal static string LuaPipeStageForm => Get("LuaPipeStageForm");
+    internal static string LogLuaChunk => Get("LogLuaChunk");
+    internal static string LogLuaSyntaxError => Get("LogLuaSyntaxError");
+    internal static string LogLuaRuntimeError => Get("LogLuaRuntimeError");
 
 	private static string Get(string key)
 		=> Manager.GetString(key, CultureInfo.CurrentCulture) ?? key;
