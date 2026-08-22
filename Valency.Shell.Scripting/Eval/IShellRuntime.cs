@@ -8,9 +8,9 @@ public readonly record struct PipelineStage(IReadOnlyList<string> Argv, IReadOnl
 
 public interface IShellRuntime
 {
-    int ExecuteSimpleCommand(IReadOnlyList<string> argv, IReadOnlyList<ResolvedRedirection> redirects);
+	int ExecuteSimpleCommand(IReadOnlyList<string> argv, IReadOnlyList<ResolvedRedirection> redirects);
 
-    int ExecutePipeline(IReadOnlyList<PipelineStage> stages);
+	int ExecutePipeline(IReadOnlyList<PipelineStage> stages);
 
-    int ExecuteBackground(IReadOnlyList<string> argv);
+	int ExecuteBackground(IReadOnlyList<string> argv);
 }

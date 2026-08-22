@@ -10,13 +10,13 @@ public sealed record CommandSubPart(string Command) : WordPart;
 
 public sealed record Word(IReadOnlyList<WordPart> Parts)
 {
-    public string Raw => string.Concat(Parts.Select(p => p switch
-    {
-        LiteralPart l => l.Quoted ? "\"" + l.Text + "\"" : l.Text,
-        SingleQuotedPart s => "'" + s.Text + "'",
-        CommandSubPart c => "$(" + c.Command + ")",
-        _ => string.Empty,
-    }));
+	public string Raw => string.Concat(Parts.Select(p => p switch
+	{
+		LiteralPart l => l.Quoted ? "\"" + l.Text + "\"" : l.Text,
+		SingleQuotedPart s => "'" + s.Text + "'",
+		CommandSubPart c => "$(" + c.Command + ")",
+		_ => string.Empty,
+	}));
 
-    public static readonly Word Empty = new([]);
+	public static readonly Word Empty = new([]);
 }

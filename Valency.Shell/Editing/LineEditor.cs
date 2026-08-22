@@ -7,441 +7,441 @@ namespace Valency.Shell.Editing;
 
 public enum LineResultKind
 {
-    Command,
-    Cancelled,
-    Exit,
+	Command,
+	Cancelled,
+	Exit,
 }
 
 public readonly record struct LineResult(LineResultKind Kind, string Text);
 
 public sealed class LineEditor
 {
-    private readonly Highlighter _highlighter = new();
-    private readonly List<string> _history = new();
-    private readonly StringBuilder _buffer = new();
-    private readonly ICompleter? _completer;
-    private int _cursor;
-    private int _historyIndex;
-    private string _savedLine = string.Empty;
-    private string _prompt = string.Empty;
-    private string _promptRaw = string.Empty;
-    private int _promptOffset;
-    private int _promptExtraRows;
-    private int _renderedLength;
-    private int _startTop;
-    private int _startLeft;
-    private int _ansiCursorRow;
-    private IReadOnlyList<string>? _completionCandidates;
-    private int _completionIndex;
-    private int _completionStart;
-    private int _completionEnd;
+	private readonly Highlighter _highlighter = new();
+	private readonly List<string> _history = new();
+	private readonly StringBuilder _buffer = new();
+	private readonly ICompleter? _completer;
+	private int _cursor;
+	private int _historyIndex;
+	private string _savedLine = string.Empty;
+	private string _prompt = string.Empty;
+	private string _promptRaw = string.Empty;
+	private int _promptOffset;
+	private int _promptExtraRows;
+	private int _renderedLength;
+	private int _startTop;
+	private int _startLeft;
+	private int _ansiCursorRow;
+	private IReadOnlyList<string>? _completionCandidates;
+	private int _completionIndex;
+	private int _completionStart;
+	private int _completionEnd;
 
-    public LineEditor(ICompleter? completer = null)
-    {
-        _completer = completer;
-    }
+	public LineEditor(ICompleter? completer = null)
+	{
+		_completer = completer;
+	}
 
-    public LineResult ReadLine(Prompt prompt)
-    {
-        if (Console.IsInputRedirected)
-        {
-            Console.Out.Write(PromptFormatter.StripAnsi(prompt.Raw));
-            var line = Console.In.ReadLine();
-            if (line is null)
-                return new LineResult(LineResultKind.Exit, string.Empty);
-            return new LineResult(LineResultKind.Command, line);
-        }
+	public LineResult ReadLine(Prompt prompt)
+	{
+		if (Console.IsInputRedirected)
+		{
+			Console.Out.Write(PromptFormatter.StripAnsi(prompt.Raw));
+			var line = Console.In.ReadLine();
+			if (line is null)
+				return new LineResult(LineResultKind.Exit, string.Empty);
+			return new LineResult(LineResultKind.Command, line);
+		}
 
-        _prompt = prompt.LastLine;
-        _promptRaw = prompt.Raw;
-        _promptOffset = prompt.CursorOffset;
-        _promptExtraRows = CountNewlines(prompt.Raw);
-        _buffer.Clear();
-        _cursor = 0;
-        _historyIndex = _history.Count;
-        _savedLine = string.Empty;
-        _renderedLength = 0;
+		_prompt = prompt.LastLine;
+		_promptRaw = prompt.Raw;
+		_promptOffset = prompt.CursorOffset;
+		_promptExtraRows = CountNewlines(prompt.Raw);
+		_buffer.Clear();
+		_cursor = 0;
+		_historyIndex = _history.Count;
+		_savedLine = string.Empty;
+		_renderedLength = 0;
 
-        Console.TreatControlCAsInput = true;
-        try
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                _startTop = Console.CursorTop;
-                _startLeft = Console.CursorLeft;
-            }
-            _ansiCursorRow = 0;
-            Console.Out.Write(prompt.Raw);
-            Console.Out.Flush();
+		Console.TreatControlCAsInput = true;
+		try
+		{
+			if (OperatingSystem.IsWindows())
+			{
+				_startTop = Console.CursorTop;
+				_startLeft = Console.CursorLeft;
+			}
+			_ansiCursorRow = 0;
+			Console.Out.Write(prompt.Raw);
+			Console.Out.Flush();
 
-            while (true)
-            {
-                var key = Console.ReadKey(intercept: true);
-                var result = HandleKey(key);
-                if (result.HasValue)
-                {
-                    Console.Out.WriteLine();
-                    Console.Out.Flush();
-                    return result.Value;
-                }
+			while (true)
+			{
+				var key = Console.ReadKey(intercept: true);
+				var result = HandleKey(key);
+				if (result.HasValue)
+				{
+					Console.Out.WriteLine();
+					Console.Out.Flush();
+					return result.Value;
+				}
 
-                Render();
-            }
-        }
-        finally
-        {
-            Console.TreatControlCAsInput = false;
-        }
-    }
+				Render();
+			}
+		}
+		finally
+		{
+			Console.TreatControlCAsInput = false;
+		}
+	}
 
-    private LineResult? HandleKey(ConsoleKeyInfo key)
-    {
-        var ctrl = key.Modifiers.HasFlag(ConsoleModifiers.Control);
+	private LineResult? HandleKey(ConsoleKeyInfo key)
+	{
+		var ctrl = key.Modifiers.HasFlag(ConsoleModifiers.Control);
 
-        if (key.Key != ConsoleKey.Tab)
-            ResetCompletion();
+		if (key.Key != ConsoleKey.Tab)
+			ResetCompletion();
 
-        switch (key.Key)
-        {
-            case ConsoleKey.Enter:
-                return Submit();
+		switch (key.Key)
+		{
+			case ConsoleKey.Enter:
+				return Submit();
 
-            case ConsoleKey.Tab when !ctrl:
-                Complete();
-                return null;
+			case ConsoleKey.Tab when !ctrl:
+				Complete();
+				return null;
 
-            case ConsoleKey.C when ctrl:
-                return new LineResult(LineResultKind.Cancelled, string.Empty);
+			case ConsoleKey.C when ctrl:
+				return new LineResult(LineResultKind.Cancelled, string.Empty);
 
-            case ConsoleKey.D when ctrl:
-                if (_buffer.Length == 0)
-                    return new LineResult(LineResultKind.Exit, string.Empty);
-                DeleteAtCursor(1);
-                return null;
+			case ConsoleKey.D when ctrl:
+				if (_buffer.Length == 0)
+					return new LineResult(LineResultKind.Exit, string.Empty);
+				DeleteAtCursor(1);
+				return null;
 
-            case ConsoleKey.L when ctrl:
-                Console.Clear();
-                _startTop = 0;
-                _startLeft = 0;
-                _ansiCursorRow = 0;
-                Console.Out.Write(_promptRaw);
-                _renderedLength = 0;
-                return null;
+			case ConsoleKey.L when ctrl:
+				Console.Clear();
+				_startTop = 0;
+				_startLeft = 0;
+				_ansiCursorRow = 0;
+				Console.Out.Write(_promptRaw);
+				_renderedLength = 0;
+				return null;
 
-            case ConsoleKey.A when ctrl:
-                _cursor = 0;
-                return null;
-            case ConsoleKey.E when ctrl:
-                _cursor = _buffer.Length;
-                return null;
+			case ConsoleKey.A when ctrl:
+				_cursor = 0;
+				return null;
+			case ConsoleKey.E when ctrl:
+				_cursor = _buffer.Length;
+				return null;
 
-            case ConsoleKey.U when ctrl:
-                _buffer.Remove(0, _cursor);
-                _cursor = 0;
-                return null;
+			case ConsoleKey.U when ctrl:
+				_buffer.Remove(0, _cursor);
+				_cursor = 0;
+				return null;
 
-            case ConsoleKey.K when ctrl:
-                _buffer.Remove(_cursor, _buffer.Length - _cursor);
-                return null;
+			case ConsoleKey.K when ctrl:
+				_buffer.Remove(_cursor, _buffer.Length - _cursor);
+				return null;
 
-            case ConsoleKey.W when ctrl:
-                DeleteWordBackward();
-                return null;
+			case ConsoleKey.W when ctrl:
+				DeleteWordBackward();
+				return null;
 
-            case ConsoleKey.Escape:
-                _buffer.Clear();
-                _cursor = 0;
-                return null;
+			case ConsoleKey.Escape:
+				_buffer.Clear();
+				_cursor = 0;
+				return null;
 
-            case ConsoleKey.Backspace when ctrl:
-                DeleteWordBackward();
-                return null;
-            case ConsoleKey.Backspace:
-                if (_cursor > 0)
-                {
-                    _buffer.Remove(_cursor - 1, 1);
-                    _cursor--;
-                }
-                return null;
+			case ConsoleKey.Backspace when ctrl:
+				DeleteWordBackward();
+				return null;
+			case ConsoleKey.Backspace:
+				if (_cursor > 0)
+				{
+					_buffer.Remove(_cursor - 1, 1);
+					_cursor--;
+				}
+				return null;
 
-            case ConsoleKey.Delete when ctrl:
-                DeleteWordForward();
-                return null;
-            case ConsoleKey.Delete:
-                DeleteAtCursor(1);
-                return null;
+			case ConsoleKey.Delete when ctrl:
+				DeleteWordForward();
+				return null;
+			case ConsoleKey.Delete:
+				DeleteAtCursor(1);
+				return null;
 
-            case ConsoleKey.LeftArrow when ctrl:
-                _cursor = WordStartBefore(_cursor);
-                return null;
-            case ConsoleKey.LeftArrow:
-                if (_cursor > 0) _cursor--;
-                return null;
+			case ConsoleKey.LeftArrow when ctrl:
+				_cursor = WordStartBefore(_cursor);
+				return null;
+			case ConsoleKey.LeftArrow:
+				if (_cursor > 0) _cursor--;
+				return null;
 
-            case ConsoleKey.RightArrow when ctrl:
-                _cursor = WordEndAfter(_cursor);
-                return null;
-            case ConsoleKey.RightArrow:
-                if (_cursor < _buffer.Length) _cursor++;
-                return null;
+			case ConsoleKey.RightArrow when ctrl:
+				_cursor = WordEndAfter(_cursor);
+				return null;
+			case ConsoleKey.RightArrow:
+				if (_cursor < _buffer.Length) _cursor++;
+				return null;
 
-            case ConsoleKey.Home:
-                _cursor = 0;
-                return null;
-            case ConsoleKey.End:
-                _cursor = _buffer.Length;
-                return null;
+			case ConsoleKey.Home:
+				_cursor = 0;
+				return null;
+			case ConsoleKey.End:
+				_cursor = _buffer.Length;
+				return null;
 
-            case ConsoleKey.UpArrow:
-                MoveHistory(-1);
-                return null;
-            case ConsoleKey.DownArrow:
-                MoveHistory(1);
-                return null;
+			case ConsoleKey.UpArrow:
+				MoveHistory(-1);
+				return null;
+			case ConsoleKey.DownArrow:
+				MoveHistory(1);
+				return null;
 
-            default:
-                if (!ctrl && key.KeyChar != '\0')
-                {
-                    _buffer.Insert(_cursor, key.KeyChar);
-                    _cursor++;
-                }
-                return null;
-        }
-    }
+			default:
+				if (!ctrl && key.KeyChar != '\0')
+				{
+					_buffer.Insert(_cursor, key.KeyChar);
+					_cursor++;
+				}
+				return null;
+		}
+	}
 
-    private LineResult Submit()
-    {
-        var text = _buffer.ToString();
-        if (!string.IsNullOrWhiteSpace(text) && (_history.Count == 0 || _history[^1] != text))
-            _history.Add(text);
-        return new LineResult(LineResultKind.Command, text);
-    }
+	private LineResult Submit()
+	{
+		var text = _buffer.ToString();
+		if (!string.IsNullOrWhiteSpace(text) && (_history.Count == 0 || _history[^1] != text))
+			_history.Add(text);
+		return new LineResult(LineResultKind.Command, text);
+	}
 
-    private void Complete()
-    {
-        if (_completionCandidates is { } candidates)
-        {
-            CycleCandidate(candidates);
-            return;
-        }
+	private void Complete()
+	{
+		if (_completionCandidates is { } candidates)
+		{
+			CycleCandidate(candidates);
+			return;
+		}
 
-        var line = _buffer.ToString();
-        var result = _completer?.Complete(line, _cursor);
-        if (result is not { Candidates.Count: > 0 } r)
-            return;
+		var line = _buffer.ToString();
+		var result = _completer?.Complete(line, _cursor);
+		if (result is not { Candidates.Count: > 0 } r)
+			return;
 
-        var cands = r.Candidates;
-        var start = r.Start;
-        var token = line[start.._cursor];
+		var cands = r.Candidates;
+		var start = r.Start;
+		var token = line[start.._cursor];
 
-        if (cands.Count == 1)
-        {
-            ReplaceRange(start, _cursor, cands[0] + (r.IsCommand ? " " : ""));
-            return;
-        }
+		if (cands.Count == 1)
+		{
+			ReplaceRange(start, _cursor, cands[0] + (r.IsCommand ? " " : ""));
+			return;
+		}
 
-        var lcp = LongestCommonPrefix(cands);
-        if (lcp.Length > token.Length)
-        {
-            ReplaceRange(start, _cursor, lcp);
-            _completionCandidates = cands;
-            _completionIndex = -1;
-            _completionStart = start;
-            _completionEnd = start + lcp.Length;
-            return;
-        }
+		var lcp = LongestCommonPrefix(cands);
+		if (lcp.Length > token.Length)
+		{
+			ReplaceRange(start, _cursor, lcp);
+			_completionCandidates = cands;
+			_completionIndex = -1;
+			_completionStart = start;
+			_completionEnd = start + lcp.Length;
+			return;
+		}
 
-        _completionCandidates = cands;
-        _completionIndex = 0;
-        _completionStart = start;
-        ReplaceRange(start, _cursor, cands[0]);
-        _completionEnd = start + cands[0].Length;
-    }
+		_completionCandidates = cands;
+		_completionIndex = 0;
+		_completionStart = start;
+		ReplaceRange(start, _cursor, cands[0]);
+		_completionEnd = start + cands[0].Length;
+	}
 
-    private void CycleCandidate(IReadOnlyList<string> candidates)
-    {
-        _completionIndex = (_completionIndex + 1) % candidates.Count;
-        var value = candidates[_completionIndex];
-        ReplaceRange(_completionStart, _completionEnd, value);
-        _completionEnd = _completionStart + value.Length;
-    }
+	private void CycleCandidate(IReadOnlyList<string> candidates)
+	{
+		_completionIndex = (_completionIndex + 1) % candidates.Count;
+		var value = candidates[_completionIndex];
+		ReplaceRange(_completionStart, _completionEnd, value);
+		_completionEnd = _completionStart + value.Length;
+	}
 
-    private void ResetCompletion()
-    {
-        _completionCandidates = null;
-        _completionIndex = 0;
-        _completionStart = 0;
-        _completionEnd = 0;
-    }
+	private void ResetCompletion()
+	{
+		_completionCandidates = null;
+		_completionIndex = 0;
+		_completionStart = 0;
+		_completionEnd = 0;
+	}
 
-    private void ReplaceRange(int start, int end, string value)
-    {
-        _buffer.Remove(start, end - start);
-        _buffer.Insert(start, value);
-        _cursor = start + value.Length;
-    }
+	private void ReplaceRange(int start, int end, string value)
+	{
+		_buffer.Remove(start, end - start);
+		_buffer.Insert(start, value);
+		_cursor = start + value.Length;
+	}
 
-    private static string LongestCommonPrefix(IReadOnlyList<string> values)
-    {
-        if (values.Count == 0)
-            return string.Empty;
+	private static string LongestCommonPrefix(IReadOnlyList<string> values)
+	{
+		if (values.Count == 0)
+			return string.Empty;
 
-        var prefix = values[0];
-        foreach (var value in values.Skip(1))
-        {
-            var i = 0;
-            while (i < prefix.Length && i < value.Length && prefix[i] == value[i])
-                i++;
-            prefix = prefix[..i];
-            if (prefix.Length == 0)
-                break;
-        }
-        return prefix;
-    }
+		var prefix = values[0];
+		foreach (var value in values.Skip(1))
+		{
+			var i = 0;
+			while (i < prefix.Length && i < value.Length && prefix[i] == value[i])
+				i++;
+			prefix = prefix[..i];
+			if (prefix.Length == 0)
+				break;
+		}
+		return prefix;
+	}
 
-    private void MoveHistory(int delta)
-    {
-        if (_history.Count == 0)
-            return;
+	private void MoveHistory(int delta)
+	{
+		if (_history.Count == 0)
+			return;
 
-        var next = Math.Clamp(_historyIndex + delta, 0, _history.Count);
-        if (next == _historyIndex)
-            return;
+		var next = Math.Clamp(_historyIndex + delta, 0, _history.Count);
+		if (next == _historyIndex)
+			return;
 
-        if (_historyIndex == _history.Count)
-            _savedLine = _buffer.ToString();
+		if (_historyIndex == _history.Count)
+			_savedLine = _buffer.ToString();
 
-        _historyIndex = next;
+		_historyIndex = next;
 
-        var text = _historyIndex == _history.Count ? _savedLine : _history[_historyIndex];
-        _buffer.Clear();
-        _buffer.Append(text);
-        _cursor = _buffer.Length;
-    }
+		var text = _historyIndex == _history.Count ? _savedLine : _history[_historyIndex];
+		_buffer.Clear();
+		_buffer.Append(text);
+		_cursor = _buffer.Length;
+	}
 
-    private void DeleteAtCursor(int count)
-    {
-        if (_cursor >= _buffer.Length)
-            return;
-        _buffer.Remove(_cursor, Math.Min(count, _buffer.Length - _cursor));
-    }
+	private void DeleteAtCursor(int count)
+	{
+		if (_cursor >= _buffer.Length)
+			return;
+		_buffer.Remove(_cursor, Math.Min(count, _buffer.Length - _cursor));
+	}
 
-    private void DeleteWordBackward()
-    {
-        var start = WordStartBefore(_cursor);
-        _buffer.Remove(start, _cursor - start);
-        _cursor = start;
-    }
+	private void DeleteWordBackward()
+	{
+		var start = WordStartBefore(_cursor);
+		_buffer.Remove(start, _cursor - start);
+		_cursor = start;
+	}
 
-    private void DeleteWordForward()
-    {
-        var end = WordEndAfter(_cursor);
-        _buffer.Remove(_cursor, end - _cursor);
-    }
+	private void DeleteWordForward()
+	{
+		var end = WordEndAfter(_cursor);
+		_buffer.Remove(_cursor, end - _cursor);
+	}
 
-    private int WordStartBefore(int pos)
-    {
-        var i = pos;
-        while (i > 0 && char.IsWhiteSpace(_buffer[i - 1])) i--;
-        while (i > 0 && !char.IsWhiteSpace(_buffer[i - 1])) i--;
-        return i;
-    }
+	private int WordStartBefore(int pos)
+	{
+		var i = pos;
+		while (i > 0 && char.IsWhiteSpace(_buffer[i - 1])) i--;
+		while (i > 0 && !char.IsWhiteSpace(_buffer[i - 1])) i--;
+		return i;
+	}
 
-    private int WordEndAfter(int pos)
-    {
-        var i = pos;
-        while (i < _buffer.Length && char.IsWhiteSpace(_buffer[i])) i++;
-        while (i < _buffer.Length && !char.IsWhiteSpace(_buffer[i])) i++;
-        return i;
-    }
+	private int WordEndAfter(int pos)
+	{
+		var i = pos;
+		while (i < _buffer.Length && char.IsWhiteSpace(_buffer[i])) i++;
+		while (i < _buffer.Length && !char.IsWhiteSpace(_buffer[i])) i++;
+		return i;
+	}
 
-    private void Render()
-    {
-        if (OperatingSystem.IsWindows())
-            RenderWindows();
-        else
-            RenderAnsi();
-        Console.Out.Flush();
-    }
+	private void Render()
+	{
+		if (OperatingSystem.IsWindows())
+			RenderWindows();
+		else
+			RenderAnsi();
+		Console.Out.Flush();
+	}
 
-    private void RenderWindows()
-    {
-        var width = Console.BufferWidth > 0 ? Console.BufferWidth : 80;
-        var height = Console.BufferHeight > 0 ? Console.BufferHeight : 24;
+	private void RenderWindows()
+	{
+		var width = Console.BufferWidth > 0 ? Console.BufferWidth : 80;
+		var height = Console.BufferHeight > 0 ? Console.BufferHeight : 24;
 
-        var lineStartTop = _startTop + _promptExtraRows;
-        var lineStartCol = _promptExtraRows == 0 ? _startLeft : 0;
-        Console.SetCursorPosition(lineStartCol, lineStartTop);
-        Console.Out.Write(_prompt);
-        WriteHighlighted(_buffer.ToString());
+		var lineStartTop = _startTop + _promptExtraRows;
+		var lineStartCol = _promptExtraRows == 0 ? _startLeft : 0;
+		Console.SetCursorPosition(lineStartCol, lineStartTop);
+		Console.Out.Write(_prompt);
+		WriteHighlighted(_buffer.ToString());
 
-        var total = _promptOffset + _buffer.Length;
-        if (_renderedLength > total)
-            Console.Out.Write(new string(' ', _renderedLength - total));
-        _renderedLength = total;
+		var total = _promptOffset + _buffer.Length;
+		if (_renderedLength > total)
+			Console.Out.Write(new string(' ', _renderedLength - total));
+		_renderedLength = total;
 
-        var targetAbs = _promptOffset + _cursor;
-        var top = Math.Clamp(lineStartTop + targetAbs / width, 0, Math.Max(height - 1, 0));
-        var left = targetAbs % width;
-        Console.SetCursorPosition(left, top);
-    }
+		var targetAbs = _promptOffset + _cursor;
+		var top = Math.Clamp(lineStartTop + targetAbs / width, 0, Math.Max(height - 1, 0));
+		var left = targetAbs % width;
+		Console.SetCursorPosition(left, top);
+	}
 
-    private void RenderAnsi()
-    {
-        var width = Console.WindowWidth > 0 ? Console.WindowWidth : 80;
+	private void RenderAnsi()
+	{
+		var width = Console.WindowWidth > 0 ? Console.WindowWidth : 80;
 
-        // 回到提示符起始行（相对移动，不读取 Console.CursorTop，SSH/PTY 下其值不可靠）
-        if (_ansiCursorRow > 0)
-            Console.Out.Write($"\x1b[{_ansiCursorRow}A");
-        Console.Out.Write('\r');
+		// 回到提示符起始行（相对移动，不读取 Console.CursorTop，SSH/PTY 下其值不可靠）
+		if (_ansiCursorRow > 0)
+			Console.Out.Write($"\x1b[{_ansiCursorRow}A");
+		Console.Out.Write('\r');
 
-        Console.Out.Write(_prompt);
-        WriteHighlighted(_buffer.ToString());
+		Console.Out.Write(_prompt);
+		WriteHighlighted(_buffer.ToString());
 
-        // 清除光标到屏幕尾的残留（内容变短时抹掉旧字符）
-        Console.Out.Write("\x1b[J");
+		// 清除光标到屏幕尾的残留（内容变短时抹掉旧字符）
+		Console.Out.Write("\x1b[J");
 
-        var total = _promptOffset + _buffer.Length;
-        var targetAbs = _promptOffset + _cursor;
-        var endRow = total / width;
-        var targetRow = targetAbs / width;
-        var targetCol = targetAbs % width;
-        var curCol = total % width;
+		var total = _promptOffset + _buffer.Length;
+		var targetAbs = _promptOffset + _cursor;
+		var endRow = total / width;
+		var targetRow = targetAbs / width;
+		var targetCol = targetAbs % width;
+		var curCol = total % width;
 
-        if (endRow > targetRow)
-            Console.Out.Write($"\x1b[{endRow - targetRow}A");
-        if (curCol > targetCol)
-            Console.Out.Write($"\x1b[{curCol - targetCol}D");
-        else if (curCol < targetCol)
-            Console.Out.Write($"\x1b[{targetCol - curCol}C");
+		if (endRow > targetRow)
+			Console.Out.Write($"\x1b[{endRow - targetRow}A");
+		if (curCol > targetCol)
+			Console.Out.Write($"\x1b[{curCol - targetCol}D");
+		else if (curCol < targetCol)
+			Console.Out.Write($"\x1b[{targetCol - curCol}C");
 
-        _ansiCursorRow = targetRow;
-    }
+		_ansiCursorRow = targetRow;
+	}
 
-    private static int CountNewlines(string text)
-    {
-        var count = 0;
-        foreach (var c in text)
-        {
-            if (c == '\n')
-                count++;
-        }
-        return count;
-    }
+	private static int CountNewlines(string text)
+	{
+		var count = 0;
+		foreach (var c in text)
+		{
+			if (c == '\n')
+				count++;
+		}
+		return count;
+	}
 
-    private void WriteHighlighted(string text)
-    {
-        var pos = 0;
-        foreach (var span in _highlighter.Highlight(text))
-        {
-            if (span.Start > pos)
-                Console.Out.Write(text[pos..span.Start]);
-            Console.ForegroundColor = span.Color;
-            Console.Out.Write(text.Substring(span.Start, span.Length));
-            Console.ResetColor();
-            pos = span.Start + span.Length;
-        }
-        if (pos < text.Length)
-            Console.Out.Write(text[pos..]);
-    }
+	private void WriteHighlighted(string text)
+	{
+		var pos = 0;
+		foreach (var span in _highlighter.Highlight(text))
+		{
+			if (span.Start > pos)
+				Console.Out.Write(text[pos..span.Start]);
+			Console.ForegroundColor = span.Color;
+			Console.Out.Write(text.Substring(span.Start, span.Length));
+			Console.ResetColor();
+			pos = span.Start + span.Length;
+		}
+		if (pos < text.Length)
+			Console.Out.Write(text[pos..]);
+	}
 }

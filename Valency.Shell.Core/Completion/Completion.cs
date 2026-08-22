@@ -4,5 +4,5 @@ public readonly record struct CompletionResult(int Start, IReadOnlyList<string> 
 
 public interface ICompleter
 {
-    CompletionResult? Complete(string line, int cursor);
+	CompletionResult? Complete(string line, int cursor);
 }

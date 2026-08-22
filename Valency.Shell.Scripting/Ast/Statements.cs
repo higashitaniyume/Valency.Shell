@@ -5,10 +5,10 @@ public abstract record Statement : Node;
 public sealed record BlockStatement(IReadOnlyList<Statement> Statements) : Statement;
 
 public sealed record IfStatement(
-    string Condition,
-    BlockStatement Then,
-    IReadOnlyList<(string Condition, BlockStatement Body)> ElseIfs,
-    BlockStatement? Else) : Statement;
+	string Condition,
+	BlockStatement Then,
+	IReadOnlyList<(string Condition, BlockStatement Body)> ElseIfs,
+	BlockStatement? Else) : Statement;
 
 public sealed record WhileStatement(string Condition, BlockStatement Body, bool Until) : Statement;
 
