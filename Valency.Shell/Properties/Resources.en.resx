@@ -234,12 +234,6 @@
   <data name="LogCtrlCInterrupted" xml:space="preserve">
     <value>Received Ctrl+C, interrupting foreground processes</value>
   </data>
-  <data name="LogParseFailed" xml:space="preserve">
-    <value>Parse failed: {Text}</value>
-  </data>
-  <data name="LogExpressionFailed" xml:space="preserve">
-    <value>Expression error: {Message}</value>
-  </data>
   <data name="LogJobStarted" xml:space="preserve">
     <value>Job started [{JobId}] {Command} (PID {Pid})</value>
   </data>

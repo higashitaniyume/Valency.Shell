@@ -2,16 +2,15 @@
 
 一个用 C# / .NET 9 编写的跨平台命令行 shell，支持 Windows、Linux 和 macOS（包括纯终端环境如 Debian 服务器、Android Termux）。
 
-除了交互式 shell，它内建一个 **类 C / pwsh 风格的脚本解释器**：词法分析 → 语法树（AST）→ 解释执行，支持 `{}` 代码块、`()` 表达式（C 运算符优先级）、控制流、函数、算术、命令替换与文件重定向。
+除了交互式 shell，它内建一个**完整的 Lua 解释器**（基于 [MoonSharp](https://www.moonsharp.org/)，纯 C# 实现，无原生依赖）：闭包、元表、协程、变参、多返回值、`string`/`math`/`table`/`os` 标准库一应俱全，任何合法 Lua 程序都能直接运行。命令以**函数调用**的形式融入 Lua：`git("status")`、`capture("ls")`、`pipe(...)`。
 
 ## 特性
 
 - **交互式行编辑**：仿 PowerShell/PSReadLine —— 历史记录（↑/↓）、行内编辑、`Ctrl+A/E/U/K/W`、`Ctrl+L` 清屏、`Ctrl+C` 取消当前行、`Ctrl+D` 空行退出
-- **Tab 补全**：对标 pwsh，补全内置命令、PATH 可执行文件、目录/文件；多候选时先补全到最长公共前缀，再按 Tab 循环
-- **脚本解释器**：基于语法树的解释执行，见下文「脚本语言」
-- **命令语法**：`;` / `&&` / `||` 命令分隔与短路、`|` 管道（末尾可为内置命令）、`&` 后台作业
-- **变量展开**：`$VAR` / `${VAR}` / `$env:VAR`；未定义变量置空；`~` 展开为用户目录
-- **语法高亮**：命令（合法蓝/未知红）、字符串（黄）、变量（品红）、分隔符（青）
+- **完整 Lua 脚本**：MoonSharp 驱动，语言即标准 Lua；REPL 单表达式自动回显结果
+- **命令即函数**：`git("status", "-s")` 直接调用任意 PATH 可执行文件或内置命令（零注册的全局代理）；`run` / `capture` / `pipe` / `spawn` / `glob` 等 shell API
+- **Tab 补全**：调用位置补全命令/函数名（补全后自动带 `(`），字符串里补全路径；多候选先补全到最长公共前缀，再按 Tab 循环
+- **语法高亮**：Lua 关键字（青）、字符串（黄）、注释（绿）、调用位置（合法命令蓝/未知红）
 - **可配置提示符**：默认单行 `user@dir#`，可选 Kali 风格双行；支持 `$USER` `$HOST` `$PWD` `$SHARP` 等变量自定义模板，内置 ANSI 配色
 - **结构化日志**：基于 Serilog，写入 `~/.valency/logs/`（按 session 分文件、滚动），UDP 实时推送 + 独立日志查看器
 
@@ -32,132 +31,96 @@ dotnet publish Valency.Shell/Valency.Shell.csproj -c Release -r linux-x64 --self
 ## 运行脚本
 
 ```bash
-# 执行脚本文件（剩余参数作为 $1..$n 传入）
-valency script.sh arg1 arg2
+# 执行脚本文件（剩余参数作为 args[1..n] 传入，args[0] 是脚本名）
+valency script.lua arg1 arg2
 
-# 在 shell 内部直接执行脚本（./ 或路径，.vsh/.sh/.bash/.zsh 可直接跑）
-./demo.vsh arg1
-scripts/build.sh
+# 在 shell 内部直接执行脚本（./ 或路径，.lua/.vsh/.sh/.bash/.zsh 都按 Lua 运行）
+./demo.lua arg1
+scripts/build.lua
 
-# 执行单条命令（类似 bash -c）
-valency -c 'for ($i = 1; $i <= 3; $i++) { echo $i }'
+# 执行单条命令（类似 lua -e）
+valency -c 'for i = 1, 3 do echo(i) end'
 
 # 从标准输入读取脚本
-cat script.sh | valency
+cat script.lua | valency
 ```
 
-## 脚本语言
+## 脚本语言：Lua + Shell API
 
-脚本采用**类 C / pwsh 风格**：大括号 `{}` 包裹代码块，小括号 `()` 放置表达式，表达式遵循 C 运算符优先级。
+语言就是标准 Lua（MoonSharp 提供 Lua 5.x 语义）。REPL 与 `-c` 中，单独一行表达式会自动回显求值结果。
 
-### 列表与连接符
+### 命令即函数
 
-```bash
-echo a; echo b          # ; 顺序执行
-mkdir d && cd d         # && 前者成功才执行后者
-cd d || echo "失败"     # || 前者失败才执行后者
-cat a.txt | grep foo    # 管道（字节流）
-sleep 5 &               # 后台执行
-! false                 # 命令取反
+```lua
+git("status", "-s")            -- 任意 PATH 可执行文件：直接按函数调用，返回退出码
+echo("hello", "world")         -- 内置命令同样是函数
+local out = capture("ls", "-l")-- 捕获 stdout；第二个返回值是退出码
+local out, code = capture("git", "status")
+
+run("make", "-j4")             -- 显式调用，返回退出码
 ```
 
-### 控制流
+未定义的全局名如果能解析为内置命令或 PATH 可执行文件，会自动得到一个命令代理函数——无需注册即可调用；其余名字保持 `nil`。
 
-```bash
-if ($x == 1) {
-    echo "one"
-} else if ($x == 2) {
-    echo "two"
-} else {
-    echo "other"
-}
+### 管道与重定向
 
-$i = 0
-while ($i < 10) {
-    echo $i
-    $i = $i + 1
-}
+```lua
+pipe("cat a.log", "grep error")                 -- 字符串阶段按空白拆分
+pipe({ "cat", "a.log" }, { "grep", "error" })   -- 数组阶段更精确（推荐）
 
-until ($i >= 10) {
-    $i = $i + 1
-}
-
-for ($i = 0; $i < 10; $i++) {
-    echo $i
-}
+-- 末尾选项表：out / err / append / merge / input
+pipe({ "cmd", "/c", "dir" }, { "grep", "txt" }, { out = "out.txt" })
+run("make", { out = "build.log", append = true })
+run("test", { err = "err.log" })
+run("cmd", { out = "all.log", merge = true })   -- 2>&1
+run("app", { input = "data.txt" })              -- stdin
 ```
 
-### 函数
+注：管道的中间阶段必须是外部进程；内置命令（如 `grep`）可作为最后一个阶段。
 
-```bash
-function greet($name) {
-    echo "hello, $name"
-    return 0
-}
-greet world
+### 后台作业
+
+```lua
+spawn("sleep", "60")   -- 启动后台作业，返回作业号（宿主同时打印 [job] pid）
+jobs()                 -- 列出正在运行的作业
 ```
 
-函数内位置参数仍是 `$1` `$2` …，具名参数映射到 `$1` 起的位置参数。
+### 变量与环境
 
-### 表达式
-
-表达式是原生的一等公民，出现在 `if (...)`、`while (...)`、`for (...)`、赋值右值与 `return` 中：
-
-```bash
-$x = 1 + 2 * 3          # 赋值，$x == 7
-$y = "ab" + 3           # 字符串拼接，$y == "ab3"
-$x += 1                 # 复合赋值
-$x++                    # 自增
-if ($x > 3 && $y == 5)  # 比较 + 逻辑
-$max = ($a > $b) ? $a : $b   # 三元
+```lua
+name = "world"         -- Lua 全局变量（shell 变量即 Lua 变量）
+local x = 1 + 2 * 3
+env.PATH               -- 读环境变量
+env.MY_FLAG = "1"      -- 写环境变量（直写进程环境）
+export("EDITOR=vim")   -- 内置命令同样可用
+read("answer")         -- 从 stdin 读一行到 Lua 全局 answer
+status()               -- 上一条命令的退出码
+args[0], args[1], #args -- 脚本名 / 位置参数 / 参数个数
 ```
 
-运算符按 C 优先级从低到高：`=` 及复合赋值 → `?:` → `||` → `&&` → `|` → `^` → `&` → `== !=` → `< <= > >=` → `<< >>` → `+ -` → `* / %` → 一元 `! ~ - +` / 前后缀 `++ --` → 字面量。
+### 完整 Lua
 
-字面量：整数（含 `0x`）、`"字符串"` / `'字符串'`、`$变量`、`${变量}`、`$(命令)`、`true` / `false`。
+```lua
+local t = setmetatable({}, { __index = function(_, k) return k .. "!" end })
+local co = coroutine.wrap(function() coroutine.yield(1) return 2 end)
 
-### 命令替换
+local function counter()
+	local n = 0
+	return function() n = n + 1 return n end
+end
 
-```bash
-echo $(ls)              # 捕获命令输出
-echo "当前目录：$(pwd)"
-```
+for _, f in ipairs(glob("*.cs")) do   -- glob 返回匹配表
+	echo(f)
+end
 
-### 变量与位置参数
+if x > 3 and s ~= "" then echo("ok") end
 
-```bash
-$name = "world"
-echo $name              # $VAR
-echo ${name}s           # ${VAR} 区分边界
-echo $?                 # 上一条命令退出码
-echo $$                 # 当前进程 PID
-echo $0 $1 $2           # 脚本名与位置参数
-echo $#                 # 参数个数
-echo $env:PATH          # 环境变量
-```
-
-### 文件名展开（glob）
-
-```bash
-echo *.cs
-rm *.tmp
-cp src/*.c dst/
-```
-
-支持 `*`、`?`、`[...]`。
-
-### 文件重定向
-
-```bash
-cmd > file              # 覆盖写 stdout
-cmd >> file             # 追加写 stdout
-cmd 2> err              # stderr 到文件
-cmd 2>&1                # stderr 合并到 stdout
-cmd &> file             # stdout + stderr 到同一文件
-cmd < file              # 从文件读 stdin
+exit(0)                                -- 显式退出
 ```
 
 ## 内置命令
+
+内置命令以函数形式调用（`cd("/tmp")`），任意命令加 `--help`/`-h` 查看帮助。
 
 | 命令 | 说明 |
 |---|---|
@@ -172,14 +135,13 @@ cmd < file              # 从文件读 stdin
 | `read NAME...` | 从标准输入读取一行并赋值 |
 | `shift [n]` | 左移位置参数 |
 | `source` / `. FILE` | 读取并执行脚本文件 |
-| `break` / `continue` / `return [n]` | 循环 / 函数控制流 |
 | `jobs` | 列出正在运行的后台作业 |
 | `grep` | 筛选字符串（`-i` `-v` `-n` `-c`，可接管道） |
 | `logs` | 查看日志（`--tail` `--head` `--level` `--follow`） |
 | `prompt` | 查看/切换提示符风格（`plain` / `kali` / `custom`） |
 | `help [cmd]` | 列出命令，或查看某个命令的详细帮助 |
 
-任意命令加 `--help` 或 `-h` 查看帮助。
+`break` / `continue` / `return` 是 Lua 原生语句，不再作为内置命令。
 
 ## 配置（环境变量）
 
@@ -189,7 +151,7 @@ cmd < file              # 从文件读 stdin
 | `VALENCY_PROMPT_FORMAT` | 自定义提示符模板 | — |
 | `VALENCY_LOG_DIR` | 日志目录 | `~/.valency/logs` |
 | `VALENCY_LOG_PORT` | UDP 实时日志端口 | `7310` |
-| `VALENCY_LOG_LEVEL` | 日志级别，`verbose` 时输出 token/语句级详情（文件与 UDP 实时都可见） | `debug` |
+| `VALENCY_LOG_LEVEL` | 日志级别，`verbose` 时输出语句级详情（文件与 UDP 实时都可见） | `debug` |
 
 自定义提示符模板使用 `$变量` 语法：`$USER`（用户名）、`$HOST` / `$HOSTNAME`（主机名）、`$PWD`（当前目录，用户目录缩写为 `~`）、`$SHARP`（权限符 `#`/`$`）、`$CONN`（连接符 `@`），其余按环境变量展开。例如：
 
@@ -199,7 +161,7 @@ export VALENCY_PROMPT_FORMAT='[$USER@$PWD] '
 
 ## 日志
 
-每次启动生成 `~/.valency/logs/session-<时间戳>.log`，10MB 滚动、保留 5 个，内容按级别记录（文件记 Debug 全量，UDP 实时只记 Info 关键事件）。设置 `VALENCY_LOG_LEVEL=verbose` 后，文件与 UDP 实时都会记录 token/语句级 Verbose 日志，可用日志查看器实时查看。
+每次启动生成 `~/.valency/logs/session-<时间戳>.log`，10MB 滚动、保留 5 个，内容按级别记录（文件记 Debug 全量，UDP 实时只记 Info 关键事件）。设置 `VALENCY_LOG_LEVEL=verbose` 后，文件与 UDP 实时都会记录语句级 Verbose 日志，可用日志查看器实时查看。
 
 - `logs`：查看当前会话日志
 - `logs --level verbose|debug|info|warn|error|fatal`：按级别筛选
@@ -210,9 +172,9 @@ export VALENCY_PROMPT_FORMAT='[$USER@$PWD] '
 
 ```
 Valency.Shell.slnx
-├── Valency.Shell.Core/       纯逻辑：变量展开、路径解析、补全、高亮、内置命令名
-├── Valency.Shell.Scripting/  脚本解释器：词法、AST、解析器、算术、词展开、解释执行
-├── Valency.Shell.Engine/     进程执行：Run / RunPipeline / 重定向 / 后台作业
+├── Valency.Shell.Core/       纯逻辑：路径解析、补全、高亮、内置命令名
+├── Valency.Shell.Scripting/  Lua 语言层：LuaShell + shell API（MoonSharp）、glob
+├── Valency.Shell.Engine/     进程执行：Run / RunPipeline / 捕获 / 后台作业
 ├── Valency.Shell/            Host：REPL、行编辑器、内置命令、提示符、日志
 ├── Valency.Shell.LogViewer/  日志查看器
 └── Valency.Shell.Tests/      xUnit 测试（按 Core/Scripting/Builtins/Engine/Host 分层）

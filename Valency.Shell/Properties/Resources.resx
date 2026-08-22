@@ -234,12 +234,6 @@
   <data name="LogCtrlCInterrupted" xml:space="preserve">
     <value>收到 Ctrl+C，中断前台进程</value>
   </data>
-  <data name="LogParseFailed" xml:space="preserve">
-    <value>解析失败: {Text}</value>
-  </data>
-  <data name="LogExpressionFailed" xml:space="preserve">
-    <value>表达式错误: {Message}</value>
-  </data>
   <data name="LogJobStarted" xml:space="preserve">
     <value>作业启动 [{JobId}] {Command} (PID {Pid})</value>
   </data>

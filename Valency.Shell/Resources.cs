@@ -83,8 +83,6 @@ internal static class Resources
 	internal static string ProgramUsage => Get("ProgramUsage");
 	internal static string ProgramScriptNotFound => Get("ProgramScriptNotFound");
 	internal static string LogCtrlCInterrupted => Get("LogCtrlCInterrupted");
-	internal static string LogParseFailed => Get("LogParseFailed");
-	internal static string LogExpressionFailed => Get("LogExpressionFailed");
 	internal static string LogJobStarted => Get("LogJobStarted");
 	internal static string LogJobCompleted => Get("LogJobCompleted");
 	internal static string LogStartup => Get("LogStartup");
