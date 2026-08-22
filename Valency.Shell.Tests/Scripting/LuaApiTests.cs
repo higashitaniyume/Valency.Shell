@@ -343,4 +343,71 @@ public class LuaApiTests
         Assert.Equal(string.Empty, output);
         Assert.Equal(10.0, shell.GetGlobal("y")!.Number);
     }
+
+    // ---- require / 纯 Lua 库加载 ----
+
+    private sealed class TempModuleDir : IDisposable
+    {
+        public string Dir { get; } = Path.Combine(Path.GetTempPath(), "valency-lua-" + Guid.NewGuid().ToString("N"));
+        private readonly string _original = Environment.CurrentDirectory;
+
+        public TempModuleDir()
+        {
+            Directory.CreateDirectory(Dir);
+            Environment.CurrentDirectory = Dir;
+        }
+
+        public void Dispose()
+        {
+            Environment.CurrentDirectory = _original;
+            Directory.Delete(Dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Require_LoadsModuleFromCurrentDirectory()
+    {
+        using var dir = new TempModuleDir();
+        File.WriteAllText(Path.Combine(dir.Dir, "greet.lua"), "return { hello = function() return 'hi' end }");
+        var shell = new LuaShell(new FakeLuaHost());
+
+        shell.Execute("m = require('greet') r = m.hello()");
+
+        Assert.Equal("hi", shell.GetGlobal("r")!.String);
+    }
+
+    [Fact]
+    public void Require_DottedName_ResolvesSubdirectory()
+    {
+        using var dir = new TempModuleDir();
+        Directory.CreateDirectory(Path.Combine(dir.Dir, "sub"));
+        File.WriteAllText(Path.Combine(dir.Dir, "sub", "inner.lua"), "return 42");
+        var shell = new LuaShell(new FakeLuaHost());
+
+        shell.Execute("v = require('sub.inner')");
+
+        Assert.Equal(42.0, shell.GetGlobal("v")!.Number);
+    }
+
+    [Fact]
+    public void Require_MissingModule_FailsAsRuntimeError()
+    {
+        using var dir = new TempModuleDir();
+        var shell = new LuaShell(new FakeLuaHost());
+        var error = CaptureError(() => Assert.Equal(1, shell.Execute("require('no_such_module_xyz')")));
+        Assert.NotEmpty(error);
+    }
+
+    [Fact]
+    public void Require_CachesModule()
+    {
+        using var dir = new TempModuleDir();
+        File.WriteAllText(Path.Combine(dir.Dir, "counter.lua"), "loaded = (loaded or 0) + 1 return loaded");
+        var shell = new LuaShell(new FakeLuaHost());
+
+        shell.Execute("a = require('counter') b = require('counter')");
+
+        Assert.Equal(1.0, shell.GetGlobal("a")!.Number);
+        Assert.Equal(1.0, shell.GetGlobal("b")!.Number);
+    }
 }

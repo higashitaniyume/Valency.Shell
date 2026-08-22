@@ -1,4 +1,5 @@
 using MoonSharp.Interpreter;
+using MoonSharp.Interpreter.Loaders;
 using Serilog;
 using Valency.Shell.Scripting.Expansion;
 
@@ -28,7 +29,43 @@ public sealed class LuaShell
         _host = host;
         _logger = logger?.ForContext("Src", "lua");
         _script = new Script();
+        ConfigureScriptLoader();
         RegisterApi();
+    }
+
+    /// <summary>
+    ///     require() 解析：当前目录 ./?.lua、./?/init.lua，用户库目录 ~/.valency/lua/，
+    ///     以及 VALENCY_LUA_PATH（分号分隔，支持 ? 模板；纯目录自动补 /?.lua）。
+    /// </summary>
+    private void ConfigureScriptLoader()
+    {
+        var loader = new FileSystemScriptLoader { ModulePaths = BuildModulePaths() };
+        _script.Options.ScriptLoader = loader;
+    }
+
+    private static string[] BuildModulePaths()
+    {
+        var paths = new List<string> { "?.lua", "?/init.lua" };
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrEmpty(home))
+        {
+            var lib = home.Replace('\\', '/') + "/.valency/lua";
+            paths.Add(lib + "/?.lua");
+            paths.Add(lib + "/?/init.lua");
+        }
+
+        var extra = Environment.GetEnvironmentVariable("VALENCY_LUA_PATH");
+        if (!string.IsNullOrEmpty(extra))
+        {
+            foreach (var entry in extra.Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var template = entry.Contains('?') ? entry.Replace('\\', '/') : entry.Replace('\\', '/') + "/?.lua";
+                paths.Add(template);
+            }
+        }
+
+        return [.. paths];
     }
 
     public Table Globals => _script.Globals;
