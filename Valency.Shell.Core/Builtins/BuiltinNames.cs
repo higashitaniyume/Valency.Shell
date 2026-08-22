@@ -22,16 +22,13 @@ public static class BuiltinNames
 	public const string Source = "source";
 	public const string Dot = ".";
 	public const string Shift = "shift";
-	public const string Break = "break";
-	public const string Continue = "continue";
-	public const string Return = "return";
 
 	public static readonly IReadOnlySet<string> All =
 		new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 		{
 			Exit, Cd, Pwd, Jobs, Logs, Prompt, Grep, Help,
 			Echo, Test, Bracket, True, False, Colon, Export, Unset,
-			Read, Source, Dot, Shift, Break, Continue, Return,
+			Read, Source, Dot, Shift,
 		};
 
 	public static bool IsBuiltin(string name) => All.Contains(name);

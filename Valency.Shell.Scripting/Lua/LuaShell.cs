@@ -39,8 +39,18 @@ public sealed class LuaShell
         return value.IsNil() ? null : value;
     }
 
+    public string? GetGlobalString(string name)
+    {
+        var value = _script.Globals.Get(name);
+        if (value.IsNil())
+            return null;
+        return value.Type == DataType.String ? value.String : value.ToPrintString();
+    }
+
     public void SetGlobal(string name, string value) =>
         _script.Globals.Set(name, DynValue.NewString(value));
+
+    public void UnsetGlobal(string name) => _script.Globals.Set(name, DynValue.Nil);
 
     public void SetScriptArgs(string scriptName, IReadOnlyList<string> positional)
     {

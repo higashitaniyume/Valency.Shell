@@ -6,7 +6,6 @@ using Valency.Shell.Core.Resolution;
 using Valency.Shell.Editing;
 using Valency.Shell.Engine;
 using Valency.Shell.Prompting;
-using Valency.Shell.Scripting.Eval;
 using Valency.Shell.Scripting.Lua;
 
 namespace Valency.Shell;
@@ -25,7 +24,6 @@ public sealed class JobEventArgs(BackgroundJob job) : EventArgs
 public sealed class Shell : IShellContext, ILuaHost
 {
 	private readonly LineEditor _editor;
-	private readonly ShellState _state = new();
 	private readonly LuaShell _lua;
 	private readonly BuiltinRegistry _builtins;
 	private readonly ILogger _logger;
@@ -35,6 +33,13 @@ public sealed class Shell : IShellContext, ILuaHost
 	private readonly List<Process> _foreground = new();
 	private int _nextJobId = 1;
 	private TextReader? _pipelineInput;
+	private string _scriptName = "valency";
+	private IReadOnlyList<string> _positionalArgs = [];
+	private int _lastExitCode;
+	private long _lastBackgroundPid;
+	private bool _exitRequested;
+	private int _exitCode;
+	private string _currentDirectory = Environment.CurrentDirectory;
 
 	public bool IsRunning { get; private set; }
 
@@ -55,21 +60,21 @@ public sealed class Shell : IShellContext, ILuaHost
 
 	public string ScriptName
 	{
-		get => _state.ScriptName;
+		get => _scriptName;
 		set
 		{
-			_state.ScriptName = value;
-			_lua.SetScriptArgs(value, _state.PositionalArgs);
+			_scriptName = value;
+			_lua.SetScriptArgs(value, _positionalArgs);
 		}
 	}
 
 	public IReadOnlyList<string> PositionalArgs
 	{
-		get => _state.PositionalArgs;
+		get => _positionalArgs;
 		set
 		{
-			_state.PositionalArgs = value;
-			_lua.SetScriptArgs(_state.ScriptName, value);
+			_positionalArgs = value;
+			_lua.SetScriptArgs(_scriptName, value);
 		}
 	}
 
@@ -104,16 +109,16 @@ public sealed class Shell : IShellContext, ILuaHost
 
 				var result = _editor.ReadLine(_promptSettings.Build(_promptFormatter));
 				if (result.Kind == LineResultKind.Exit)
-					return _state.LastExitCode;
+					return _lastExitCode;
 				if (result.Kind == LineResultKind.Cancelled)
 				{
-					_state.LastExitCode = 1;
+					_lastExitCode = 1;
 					continue;
 				}
 
 				ExecuteLine(result.Text);
-				if (_state.ExitRequested)
-					return _state.ExitCode;
+				if (_exitRequested)
+					return _exitCode;
 			}
 		}
 		finally
@@ -138,7 +143,7 @@ public sealed class Shell : IShellContext, ILuaHost
 	public int ExecuteLine(string line)
 	{
 		if (string.IsNullOrWhiteSpace(line))
-			return _state.LastExitCode;
+			return _lastExitCode;
 
 		var code = ExecuteScript(line);
 		CommandCompleted?.Invoke(this, new CommandCompletedEventArgs(line, code));
@@ -162,13 +167,13 @@ public sealed class Shell : IShellContext, ILuaHost
 		if (IsScriptFile(argv[0]))
 		{
 			var code = ExecuteScriptFile(argv[0], argv);
-			_state.LastExitCode = code;
+			_lastExitCode = code;
 			return code;
 		}
 
 		var exit = ProcessRunner.Run(
-			argv[0], argv.Skip(1).ToArray(), TranslateLuaRedirects(redirects), _state.CurrentDirectory, _logger);
-		_state.LastExitCode = exit;
+			argv[0], argv.Skip(1).ToArray(), TranslateLuaRedirects(redirects), _currentDirectory, _logger);
+		_lastExitCode = exit;
 		return exit;
 	}
 
@@ -184,8 +189,8 @@ public sealed class Shell : IShellContext, ILuaHost
 			return CaptureWithConsoleSwap(() => ExecuteScriptFile(argv[0], argv));
 
 		var output = ProcessRunner.RunPipelineCaptured(
-			[argv.ToArray()], _foreground, _logger, out var exit, _state.CurrentDirectory);
-		_state.LastExitCode = exit;
+			[argv.ToArray()], _foreground, _logger, out var exit, _currentDirectory);
+		_lastExitCode = exit;
 		return new CaptureResult(output, exit);
 	}
 
@@ -216,7 +221,7 @@ public sealed class Shell : IShellContext, ILuaHost
 		if (_builtins.TryGet(stages[^1][0], out var lastBuiltin))
 		{
 			var captured = CaptureExternalPrefix(stages, out var prefixExit);
-			_state.LastExitCode = prefixExit;
+			_lastExitCode = prefixExit;
 			_pipelineInput = new StringReader(captured);
 			try
 			{
@@ -229,8 +234,8 @@ public sealed class Shell : IShellContext, ILuaHost
 		}
 
 		var specs = TranslateLuaRedirects(redirects);
-		var code = ProcessRunner.RunPipeline(stages, _foreground, specs, _state.CurrentDirectory, _logger);
-		_state.LastExitCode = code;
+		var code = ProcessRunner.RunPipeline(stages, _foreground, specs, _currentDirectory, _logger);
+		_lastExitCode = code;
 		return code;
 	}
 
@@ -242,7 +247,7 @@ public sealed class Shell : IShellContext, ILuaHost
 		if (_builtins.TryGet(stages[^1][0], out var lastBuiltin))
 		{
 			var captured = CaptureExternalPrefix(stages, out var prefixExit);
-			_state.LastExitCode = prefixExit;
+			_lastExitCode = prefixExit;
 			_pipelineInput = new StringReader(captured);
 			try
 			{
@@ -254,15 +259,15 @@ public sealed class Shell : IShellContext, ILuaHost
 			}
 		}
 
-		var output = ProcessRunner.RunPipelineCaptured(stages, _foreground, _logger, out var exit, _state.CurrentDirectory);
-		_state.LastExitCode = exit;
+		var output = ProcessRunner.RunPipelineCaptured(stages, _foreground, _logger, out var exit, _currentDirectory);
+		_lastExitCode = exit;
 		return new CaptureResult(output, exit);
 	}
 
 	private string CaptureExternalPrefix(IReadOnlyList<string[]> stages, out int exitCode)
 	{
 		var external = stages.Take(stages.Count - 1).ToArray();
-		return ProcessRunner.RunPipelineCaptured(external, _foreground, _logger, out exitCode, _state.CurrentDirectory);
+		return ProcessRunner.RunPipelineCaptured(external, _foreground, _logger, out exitCode, _currentDirectory);
 	}
 
 	public int? Spawn(IReadOnlyList<string> argv)
@@ -276,15 +281,15 @@ public sealed class Shell : IShellContext, ILuaHost
 			return 0;
 		}
 
-		var job = ProcessRunner.StartBackground(argv[0], argv.Skip(1).ToArray(), _logger, _state.CurrentDirectory);
+		var job = ProcessRunner.StartBackground(argv[0], argv.Skip(1).ToArray(), _logger, _currentDirectory);
 		if (job is null)
 		{
-			_state.LastExitCode = 127;
+			_lastExitCode = 127;
 			return null;
 		}
 
 		job.Id = _nextJobId++;
-		_state.LastBackgroundPid = job.Process.Id;
+		_lastBackgroundPid = job.Process.Id;
 		_jobs.Add(job);
 		Console.Out.WriteLine($"[{job.Id}] {job.Process.Id}");
 		_logger.Information(Resources.LogJobStarted, job.Id, job.Command, job.Process.Id);
@@ -296,12 +301,12 @@ public sealed class Shell : IShellContext, ILuaHost
 	{
 		return _builtins.TryGet(name, out _)
 			|| IsScriptFile(name)
-			|| PathResolver.Resolve(name, _state.CurrentDirectory) is not null;
+			|| PathResolver.Resolve(name, _currentDirectory) is not null;
 	}
 
 	private bool IsScriptFile(string command)
 	{
-		var fullPath = Path.GetFullPath(command, _state.CurrentDirectory);
+		var fullPath = Path.GetFullPath(command, _currentDirectory);
 		if (!File.Exists(fullPath))
 			return false;
 
@@ -338,12 +343,12 @@ public sealed class Shell : IShellContext, ILuaHost
 
 	private int ExecuteScriptFile(string path, IReadOnlyList<string> argv)
 	{
-		var fullPath = Path.GetFullPath(path, _state.CurrentDirectory);
+		var fullPath = Path.GetFullPath(path, _currentDirectory);
 
-		var savedName = _state.ScriptName;
-		var savedArgs = _state.PositionalArgs;
-		_state.ScriptName = path;
-		_state.PositionalArgs = argv.Skip(1).ToArray();
+		var savedName = _scriptName;
+		var savedArgs = _positionalArgs;
+		_scriptName = path;
+		_positionalArgs = argv.Skip(1).ToArray();
 		try
 		{
 			_logger?.Debug(Resources.LogScriptFile, fullPath);
@@ -351,8 +356,8 @@ public sealed class Shell : IShellContext, ILuaHost
 		}
 		finally
 		{
-			_state.ScriptName = savedName;
-			_state.PositionalArgs = savedArgs;
+			_scriptName = savedName;
+			_positionalArgs = savedArgs;
 		}
 	}
 
@@ -371,20 +376,20 @@ public sealed class Shell : IShellContext, ILuaHost
 			if (parseResult is null)
 			{
 				Console.Error.WriteLine($"{argv[0]}: {error}");
-				_state.LastExitCode = 2;
+				_lastExitCode = 2;
 				return 2;
 			}
 
 			if (parseResult.HelpRequested)
 			{
 				HelpRenderer.PrintCommand(builtin.Spec);
-				_state.LastExitCode = 0;
+				_lastExitCode = 0;
 				return 0;
 			}
 		}
 
 		var code = builtin.Execute(parseResult, this);
-		_state.LastExitCode = code;
+		_lastExitCode = code;
 		return code;
 	}
 
@@ -408,47 +413,62 @@ public sealed class Shell : IShellContext, ILuaHost
 
 	public int LastExitCode
 	{
-		get => _state.LastExitCode;
-		set => _state.LastExitCode = value;
+		get => _lastExitCode;
+		set => _lastExitCode = value;
 	}
 
 	public string? PreviousDirectory { get; set; }
 
 	public string CurrentDirectory
 	{
-		get => _state.CurrentDirectory;
-		set => _state.CurrentDirectory = value;
+		get => _currentDirectory;
+		set => _currentDirectory = value;
 	}
 
-	public bool ExitRequested => _state.ExitRequested;
-	public int RequestedExitCode => _state.ExitCode;
+	public bool ExitRequested => _exitRequested;
+	public int RequestedExitCode => _exitCode;
 	public void RequestExit(int exitCode)
 	{
-		_state.ExitRequested = true;
-		_state.ExitCode = exitCode;
+		_exitRequested = true;
+		_exitCode = exitCode;
 	}
 
 	public void PrintJobs() => ListJobs();
 
 	public TextReader? PipelineInput => _pipelineInput;
 
-	public string? GetVariable(string name) => _state.GetVariable(name);
+	public string? GetVariable(string name) =>
+		_lua.GetGlobalString(name) ?? Environment.GetEnvironmentVariable(name);
 
-	public void SetVariable(string name, string value, bool exported) => _state.SetVariable(name, value, exported);
+	public void SetVariable(string name, string value, bool exported)
+	{
+		_lua.SetGlobal(name, value);
+		if (exported)
+			Environment.SetEnvironmentVariable(name, value);
+	}
 
-	public void ExportVariable(string name) => _state.ExportVariable(name);
+	public void ExportVariable(string name)
+	{
+		var value = _lua.GetGlobalString(name) ?? Environment.GetEnvironmentVariable(name);
+		if (value is not null)
+			Environment.SetEnvironmentVariable(name, value);
+	}
 
-	public void UnsetVariable(string name) => _state.UnsetVariable(name);
+	public void UnsetVariable(string name)
+	{
+		_lua.UnsetGlobal(name);
+		Environment.SetEnvironmentVariable(name, null);
+	}
 
 	public void ShiftArguments(int count)
 	{
-		var skip = Math.Min(count, _state.PositionalArgs.Count);
-		_state.PositionalArgs = _state.PositionalArgs.Skip(skip).ToArray();
+		var skip = Math.Min(count, _positionalArgs.Count);
+		PositionalArgs = _positionalArgs.Skip(skip).ToArray();
 	}
 
 	public int RunScriptFile(string path)
 	{
-		var full = Path.GetFullPath(path, _state.CurrentDirectory);
+		var full = Path.GetFullPath(path, _currentDirectory);
 		if (!File.Exists(full))
 		{
 			Console.Error.WriteLine(string.Format(Resources.ShellSourceFileNotFound, path));

@@ -28,10 +28,7 @@ public static class BuiltinCommands
 			new ReadCommand(),
 			new ShiftCommand(),
 			new SourceCommand(BuiltinNames.Source),
-			new SourceCommand(BuiltinNames.Dot),
-			new BreakCommand(),
-			new ContinueCommand(),
-			new ReturnCommand());
+			new SourceCommand(BuiltinNames.Dot));
 		help.Registry = builtins;
 		return builtins;
 	}

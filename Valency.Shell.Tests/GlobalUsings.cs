@@ -2,8 +2,3 @@ global using Valency.Shell.Core.Expansion;
 global using Valency.Shell.Core.Highlighting;
 global using Valency.Shell.Core.Resolution;
 global using Valency.Shell.Engine;
-global using Valency.Shell.Scripting.Ast;
-global using Valency.Shell.Scripting.Eval;
-global using Valency.Shell.Scripting.Expressions;
-global using Valency.Shell.Scripting.Lexing;
-global using Valency.Shell.Scripting.Parsing;
